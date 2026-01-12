@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Hand - Interactive Particle Experience</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        #container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #video-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid rgba(0, 200, 255, 0.3);
+            box-shadow: 0 0 20px rgba(0, 200, 255, 0.2);
+            z-index: 100;
+            opacity: 0.85;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+
+        #video-container:hover {
+            opacity: 1;
+            transform: scale(1.05);
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.5s;
+        }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader {
+            width: 80px;
+            height: 80px;
+            border: 3px solid transparent;
+            border-top-color: #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            position: relative;
+        }
+
+        .loader::before {
+            content: '';
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            right: 5px;
+            bottom: 5px;
+            border: 3px solid transparent;
+            border-top-color: #a855f7;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite reverse;
+        }
+
+        .loader::after {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            bottom: 15px;
+            border: 3px solid transparent;
+            border-top-color: #fbbf24;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #loading-text {
+            color: #fff;
+            margin-top: 30px;
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            opacity: 0.7;
+        }
+
+        #instructions {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            z-index: 100;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
+            max-width: 700px;
+            line-height: 1.6;
+        }
+
+        #hand-status {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            padding: 14px 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(0, 200, 255, 0.4);
+            border-radius: 16px;
+            color: #00d4ff;
+            font-size: 13px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 220px;
+            backdrop-filter: blur(10px);
+        }
+
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff4444;
+            transition: background 0.3s, box-shadow 0.3s;
+        }
+
+        .status-dot.active {
+            background: #00ff88;
+            box-shadow: 0 0 12px #00ff88;
+        }
+
+        .status-dot.fist {
+            background: #fbbf24;
+            box-shadow: 0 0 12px #fbbf24;
+        }
+
+        .gesture-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 12px;
+            color: #a855f7;
+        }
+
+        .gesture-icon {
+            font-size: 20px;
+        }
+
+        .rotation-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            color: #fbbf24;
+            padding-top: 6px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .rotation-value {
+            font-family: monospace;
+            color: #00d4ff;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="loading">
+        <div class="loader"></div>
+        <div id="loading-text">Sistem Başlatılıyor...</div>
+    </div>
+
+    <div id="container"></div>
+
+    <div id="video-container">
+        <video id="webcam" autoplay playsinline></video>
+    </div>
+
+    <div id="instructions">
+        ✋ <strong>Açık El:</strong> Parçacıkları dağıt |
+        ✊ <strong>Yumruk:</strong> Halka oluştur |
+        🔄 <strong>Döndür:</strong> Elinizi çevirin
+    </div>
+
+    <div id="hand-status">
+        <div class="status-row">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text">El Bekleniyor...</span>
+        </div>
+        <div class="gesture-indicator">
+            <span class="gesture-icon" id="gesture-icon">🖐️</span>
+            <span id="gesture-text">Hareket yok</span>
+        </div>
+        <div class="rotation-indicator">
+            <span>🔄 Dönüş:</span>
+            <span class="rotation-value" id="rotation-value">0°</span>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+
+    <script>
+        // ============================================
+        // QUANTUM HAND - Complete Version
+        // Dispersion + Formation + Stable Tracking
+        // ============================================
+
+        // ============================================
+        // KALMAN FILTER
+        // ============================================
+        class KalmanFilter {
+            constructor(processNoise = 0.01, measurementNoise = 0.1, estimatedError = 1) {
+                this.Q = processNoise;
+                this.R = measurementNoise;
+                this.P = estimatedError;
+                this.X = 0;
+                this.K = 0;
+            }
+
+            update(measurement) {
+                this.P = this.P + this.Q;
+                this.K = this.P / (this.P + this.R);
+                this.X = this.X + this.K * (measurement - this.X);
+                this.P = (1 - this.K) * this.P;
+                return this.X;
+            }
+
+            reset(value) {
+                this.X = value;
+                this.P = 1;
+            }
+        }
+
+        // ============================================
+        // EXPONENTIAL SMOOTHING
+        // ============================================
+        class ExponentialSmooth {
+            constructor(alpha = 0.15) {
+                this.alpha = alpha;
+                this.value = null;
+            }
+
+            update(newValue) {
+                if (this.value === null) {
+                    this.value = newValue;
+                } else {
+                    this.value = this.alpha * newValue + (1 - this.alpha) * this.value;
+                }
+                return this.value;
+            }
+
+            reset(value) {
+                this.value = value;
+            }
+        }
+
+        // ============================================
+        // MAIN APPLICATION
+        // ============================================
+        class QuantumHand {
+            constructor() {
+                // Three.js
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.particles = null;
+                this.particleGroup = null;
+                this.particleCount = 10000;
+
+                // Particle data
+                this.basePositions = [];         // Original torus shape
+                this.currentLocalPositions = []; // Current positions  
+                this.velocities = [];            // For physics
+                this.dispersedPositions = [];    // Random scattered positions
+
+                // Time tracking
+                this.lastTime = performance.now();
+                this.deltaTime = 0;
+                this.time = 0;
+
+                // Hand detection state
+                this.wasHandDetected = false;
+                this.handDetectedTime = 0;
+                this.initialHandPosition = { x: 0, y: 0, z: 0 };
+
+                // ============================================
+                // STABILIZATION FILTERS
+                // ============================================
+                this.positionFilters = {
+                    x: new KalmanFilter(0.005, 0.08, 1),
+                    y: new KalmanFilter(0.005, 0.08, 1),
+                    z: new KalmanFilter(0.005, 0.15, 1)
+                };
+
+                this.positionSmooth = {
+                    x: new ExponentialSmooth(0.1),
+                    y: new ExponentialSmooth(0.1),
+                    z: new ExponentialSmooth(0.08)
+                };
+
+                this.rotationFilters = {
+                    x: new KalmanFilter(0.001, 0.15, 1),  // Lower process noise = more stable
+                    y: new KalmanFilter(0.001, 0.15, 1),
+                    z: new KalmanFilter(0.001, 0.12, 1)   // Z (roll) is most important
+                };
+
+                this.rotationSmooth = {
+                    x: new ExponentialSmooth(0.05),  // Lower alpha = smoother
+                    y: new ExponentialSmooth(0.05),
+                    z: new ExponentialSmooth(0.06)   // Slightly faster for roll
+                };
+
+                // Gesture history for stability
+                this.gestureHistory = [];
+                this.gestureHistorySize = 8;
+
+                // Hand tracking data
+                this.handData = {
+                    detected: false,
+                    rawPosition: { x: 0, y: 0, z: 0 },
+                    rawRotation: { x: 0, y: 0, z: 0 },
+                    stablePosition: { x: 0, y: 0, z: 0 },
+                    stableRotation: { x: 0, y: 0, z: 0 },
+                    renderPosition: { x: 0, y: 0, z: 0 },
+                    renderRotation: { x: 0, y: 0, z: 0 },
+                    isFist: false,
+                    isOpenHand: true,
+                    fingersCurled: 0,
+                    velocity: { x: 0, y: 0, z: 0 }
+                };
+
+                // Animation states
+                this.dispersionAmount = 0;    // 0 = formed, 1 = fully dispersed
+                this.currentColorMix = 0;     // 0 = cool, 1 = warm
+
+                // Shape settings
+                this.shapeScale = 1.6;
+                this.dispersionRadius = 5;    // How far particles scatter
+
+                // Color palettes
+                this.coolColors = [
+                    new THREE.Color(0x00d4ff), // Cyan
+                    new THREE.Color(0x00b4d8), // Light Blue
+                    new THREE.Color(0x0077b6), // Blue
+                    new THREE.Color(0xa855f7), // Purple
+                    new THREE.Color(0x7c3aed), // Violet
+                    new THREE.Color(0x06b6d4), // Teal
+                ];
+
+                this.warmColors = [
+                    new THREE.Color(0xfbbf24), // Gold
+                    new THREE.Color(0xf59e0b), // Amber
+                    new THREE.Color(0xef4444), // Red
+                    new THREE.Color(0xf97316), // Orange
+                    new THREE.Color(0xeab308), // Yellow
+                    new THREE.Color(0xdc2626), // Dark Red
+                ];
+
+                this.init();
+            }
+
+            async init() {
+                this.updateLoadingText('Three.js başlatılıyor...');
+                await this.initThreeJS();
+
+                this.updateLoadingText('Parçacık sistemi oluşturuluyor...');
+                await this.createParticles();
+
+                this.updateLoadingText('Kamera açılıyor...');
+                await this.initWebcam();
+
+                this.updateLoadingText('El takibi başlatılıyor...');
+                await this.initHandTracking();
+
+                this.hideLoading();
+                this.animate();
+            }
+
+            updateLoadingText(text) {
+                document.getElementById('loading-text').textContent = text;
+            }
+
+            hideLoading() {
+                setTimeout(() => {
+                    document.getElementById('loading').classList.add('hidden');
+                }, 500);
+            }
+
+            // ============================================
+            // THREE.JS SETUP
+            // ============================================
+
+            initThreeJS() {
+                return new Promise((resolve) => {
+                    this.scene = new THREE.Scene();
+
+                    this.camera = new THREE.PerspectiveCamera(
+                        75,
+                        window.innerWidth / window.innerHeight,
+                        0.1,
+                        1000
+                    );
+                    this.camera.position.z = 10;
+
+                    this.renderer = new THREE.WebGLRenderer({
+                        antialias: true,
+                        alpha: true,
+                        powerPreference: "high-performance"
+                    });
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                    this.renderer.setClearColor(0x000000, 1);
+                    document.getElementById('container').appendChild(this.renderer.domElement);
+
+                    // Particle group for transforms
+                    this.particleGroup = new THREE.Group();
+                    this.scene.add(this.particleGroup);
+
+                    window.addEventListener('resize', () => this.onWindowResize());
+
+                    resolve();
+                });
+            }
+
+            generateTorusPositions(count, scale = 1) {
+                const positions = [];
+                const torusRadius = 1.5 * scale;
+                const tubeRadius = 0.5 * scale;
+
+                for (let i = 0; i < count; i++) {
+                    const u = (i / count) * Math.PI * 2 + Math.random() * 0.1;
+                    const v = Math.random() * Math.PI * 2;
+                    const r = tubeRadius + (Math.random() - 0.5) * 0.1;
+
+                    positions.push({
+                        x: (torusRadius + r * Math.cos(v)) * Math.cos(u),
+                        y: (torusRadius + r * Math.cos(v)) * Math.sin(u),
+                        z: r * Math.sin(v)
+                    });
+                }
+                return positions;
+            }
+
+            generateDispersedPositions(count, radius = 5) {
+                const positions = [];
+                for (let i = 0; i < count; i++) {
+                    // Random spherical distribution
+                    const phi = Math.random() * Math.PI * 2;
+                    const theta = Math.acos(2 * Math.random() - 1);
+                    const r = radius * (0.5 + Math.random() * 0.5);
+
+                    positions.push({
+                        x: r * Math.sin(theta) * Math.cos(phi),
+                        y: r * Math.sin(theta) * Math.sin(phi),
+                        z: r * Math.cos(theta)
+                    });
+                }
+                return positions;
+            }
+
+            createParticles() {
+                return new Promise((resolve) => {
+                    const geometry = new THREE.BufferGeometry();
+                    const positions = new Float32Array(this.particleCount * 3);
+                    const colors = new Float32Array(this.particleCount * 3);
+                    const sizes = new Float32Array(this.particleCount);
+
+                    // Generate base positions
+                    this.basePositions = this.generateTorusPositions(this.particleCount, this.shapeScale);
+                    this.dispersedPositions = this.generateDispersedPositions(this.particleCount, this.dispersionRadius);
+
+                    for (let i = 0; i < this.particleCount; i++) {
+                        const basePos = this.basePositions[i];
+
+                        positions[i * 3] = basePos.x;
+                        positions[i * 3 + 1] = basePos.y;
+                        positions[i * 3 + 2] = basePos.z;
+
+                        this.currentLocalPositions.push({ ...basePos });
+                        this.velocities.push({ x: 0, y: 0, z: 0 });
+
+                        // Initial colors
+                        const color = this.coolColors[i % this.coolColors.length];
+                        colors[i * 3] = color.r;
+                        colors[i * 3 + 1] = color.g;
+                        colors[i * 3 + 2] = color.b;
+
+                        sizes[i] = Math.random() * 0.06 + 0.04;
+                    }
+
+                    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+                    const material = new THREE.ShaderMaterial({
+                        uniforms: {
+                            time: { value: 0 },
+                            dispersion: { value: 0.0 }
+                        },
+                        vertexShader: `
+                            attribute float size;
+                            varying vec3 vColor;
+                            uniform float time;
+                            uniform float dispersion;
+                            
+                            void main() {
+                                vColor = color;
+                                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                                
+                                // Size varies with dispersion
+                                float sizeMultiplier = 1.0 + dispersion * 0.3;
+                                float pulse = 1.0 + 0.1 * sin(time * 2.0 + position.x * 1.5);
+                                gl_PointSize = size * sizeMultiplier * pulse * (400.0 / -mvPosition.z);
+                                
+                                gl_Position = projectionMatrix * mvPosition;
+                            }
+                        `,
+                        fragmentShader: `
+                            varying vec3 vColor;
+                            
+                            void main() {
+                                vec2 center = gl_PointCoord - vec2(0.5);
+                                float dist = length(center);
+                                
+                                if (dist > 0.5) discard;
+                                
+                                float alpha = 1.0 - smoothstep(0.0, 0.5, dist);
+                                float glow = exp(-dist * 2.0);
+                                
+                                vec3 finalColor = vColor * (1.0 + glow * 1.5);
+                                gl_FragColor = vec4(finalColor, alpha * 0.95);
+                            }
+                        `,
+                        transparent: true,
+                        vertexColors: true,
+                        blending: THREE.AdditiveBlending,
+                        depthWrite: false
+                    });
+
+                    this.particles = new THREE.Points(geometry, material);
+                    this.particleGroup.add(this.particles);
+
+                    resolve();
+                });
+            }
+
+            // ============================================
+            // WEBCAM & HAND TRACKING
+            // ============================================
+
+            async initWebcam() {
+                const video = document.getElementById('webcam');
+
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                            facingMode: 'user'
+                        }
+                    });
+                    video.srcObject = stream;
+
+                    return new Promise((resolve) => {
+                        video.onloadedmetadata = () => {
+                            video.play();
+                            resolve();
+                        };
+                    });
+                } catch (error) {
+                    console.error('Webcam error:', error);
+                    document.getElementById('video-container').style.display = 'none';
+                }
+            }
+
+            async initHandTracking() {
+                const video = document.getElementById('webcam');
+                if (!video.srcObject) return;
+
+                this.hands = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+                });
+
+                this.hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.6
+                });
+
+                this.hands.onResults((results) => this.onHandResults(results));
+
+                const camera = new Camera(video, {
+                    onFrame: async () => {
+                        await this.hands.send({ image: video });
+                    },
+                    width: 640,
+                    height: 480
+                });
+
+                camera.start();
+            }
+
+            onHandResults(results) {
+                const statusDot = document.getElementById('status-dot');
+                const statusText = document.getElementById('status-text');
+                const gestureIcon = document.getElementById('gesture-icon');
+                const gestureText = document.getElementById('gesture-text');
+                const rotationValue = document.getElementById('rotation-value');
+
+                const prevPosition = { ...this.handData.rawPosition };
+
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const landmarks = results.multiHandLandmarks[0];
+
+                    // Track when hand first appears
+                    if (!this.handData.detected) {
+                        this.wasHandDetected = false;
+                        this.handDetectedTime = this.time;
+                    }
+
+                    this.handData.detected = true;
+                    statusDot.classList.add('active');
+                    statusText.textContent = 'El Algılandı';
+
+                    // Calculate hand center
+                    const wrist = landmarks[0];
+                    const indexMcp = landmarks[5];
+                    const middleMcp = landmarks[9];
+                    const ringMcp = landmarks[13];
+                    const pinkyMcp = landmarks[17];
+
+                    const centerX = (wrist.x + indexMcp.x + middleMcp.x + ringMcp.x + pinkyMcp.x) / 5;
+                    const centerY = (wrist.y + indexMcp.y + middleMcp.y + ringMcp.y + pinkyMcp.y) / 5;
+                    const centerZ = (wrist.z + indexMcp.z + middleMcp.z + ringMcp.z + pinkyMcp.z) / 5;
+
+                    this.handData.rawPosition = {
+                        x: (1 - centerX) * 14 - 7,
+                        y: -(centerY * 10 - 5),
+                        z: -centerZ * 5
+                    };
+
+                    // Store initial position when hand first appears
+                    if (!this.wasHandDetected) {
+                        this.wasHandDetected = true;
+                        this.initialHandPosition = { ...this.handData.rawPosition };
+
+                        // Reset filters to current position
+                        this.positionFilters.x.reset(0);
+                        this.positionFilters.y.reset(0);
+                        this.positionFilters.z.reset(0);
+                        this.positionSmooth.x.reset(0);
+                        this.positionSmooth.y.reset(0);
+                        this.positionSmooth.z.reset(0);
+                    }
+
+                    // Calculate RELATIVE movement from initial position
+                    const relativePosition = {
+                        x: this.handData.rawPosition.x - this.initialHandPosition.x,
+                        y: this.handData.rawPosition.y - this.initialHandPosition.y,
+                        z: this.handData.rawPosition.z - this.initialHandPosition.z
+                    };
+
+                    // Calculate velocity
+                    this.handData.velocity = {
+                        x: this.handData.rawPosition.x - prevPosition.x,
+                        y: this.handData.rawPosition.y - prevPosition.y,
+                        z: this.handData.rawPosition.z - prevPosition.z
+                    };
+
+                    // Calculate rotation
+                    this.calculateRawRotation(landmarks);
+
+                    // Apply Kalman filter to RELATIVE position
+                    this.handData.stablePosition.x = this.positionFilters.x.update(relativePosition.x);
+                    this.handData.stablePosition.y = this.positionFilters.y.update(relativePosition.y);
+                    this.handData.stablePosition.z = this.positionFilters.z.update(relativePosition.z);
+
+                    this.handData.stableRotation.x = this.rotationFilters.x.update(this.handData.rawRotation.x);
+                    this.handData.stableRotation.y = this.rotationFilters.y.update(this.handData.rawRotation.y);
+                    this.handData.stableRotation.z = this.rotationFilters.z.update(this.handData.rawRotation.z);
+
+                    // Detect gesture
+                    this.detectGestureStable(landmarks);
+
+                    // Update UI
+                    if (this.handData.isFist) {
+                        statusDot.classList.add('fist');
+                        gestureIcon.textContent = '✊';
+                        gestureText.textContent = 'Yumruk - Halka Modu';
+                    } else {
+                        statusDot.classList.remove('fist');
+                        gestureIcon.textContent = '🖐️';
+                        gestureText.textContent = 'Açık El - Dağılma';
+                    }
+
+                    const rotDeg = Math.round(this.handData.stableRotation.z * 180 / Math.PI);
+                    rotationValue.textContent = `${rotDeg}°`;
+
+                } else {
+                    this.handData.detected = false;
+                    this.wasHandDetected = false;
+                    statusDot.classList.remove('active', 'fist');
+                    statusText.textContent = 'El Bekleniyor...';
+                    gestureIcon.textContent = '🖐️';
+                    gestureText.textContent = 'Hareket yok';
+                    rotationValue.textContent = '0°';
+                }
+            }
+
+            calculateRawRotation(landmarks) {
+                // ============================================
+                // ROBUST ROTATION CALCULATION
+                // Works well for both open hand and fist
+                // Uses MCP joints (knuckles) which are always visible
+                // ============================================
+
+                const wrist = landmarks[0];
+
+                // MCP joints (knuckles) - visible in both open hand and fist
+                const thumbCmc = landmarks[1];
+                const indexMcp = landmarks[5];
+                const middleMcp = landmarks[9];
+                const ringMcp = landmarks[13];
+                const pinkyMcp = landmarks[17];
+
+                // ============================================
+                // Z ROTATION (ROLL) - Most important for fist rotation
+                // Use multiple point pairs and average for stability
+                // ============================================
+
+                // Method 1: Index to Pinky line (most reliable)
+                const dx1 = pinkyMcp.x - indexMcp.x;
+                const dy1 = pinkyMcp.y - indexMcp.y;
+                const roll1 = Math.atan2(dy1, dx1);
+
+                // Method 2: Middle to Ring (backup)
+                const dx2 = ringMcp.x - middleMcp.x;
+                const dy2 = ringMcp.y - middleMcp.y;
+                const roll2 = Math.atan2(dy2, dx2);
+
+                // Method 3: Thumb CMC to Pinky MCP (wide baseline)
+                const dx3 = pinkyMcp.x - thumbCmc.x;
+                const dy3 = pinkyMcp.y - thumbCmc.y;
+                const roll3 = Math.atan2(dy3, dx3);
+
+                // Method 4: Wrist orientation (using index and pinky MCP relative to wrist)
+                const wristToIndex = { x: indexMcp.x - wrist.x, y: indexMcp.y - wrist.y };
+                const wristToPinky = { x: pinkyMcp.x - wrist.x, y: pinkyMcp.y - wrist.y };
+                const crossProduct = wristToIndex.x * wristToPinky.y - wristToIndex.y * wristToPinky.x;
+                const dotProduct = wristToIndex.x * wristToPinky.x + wristToIndex.y * wristToPinky.y;
+                const roll4 = Math.atan2(wristToPinky.y - wristToIndex.y, wristToPinky.x - wristToIndex.x);
+
+                // Weighted average of roll angles (prioritize most reliable methods)
+                // Handle angle wrapping by converting to vectors and back
+                const rolls = [roll1, roll2, roll3, roll4];
+                const weights = [0.4, 0.2, 0.25, 0.15]; // Index-Pinky is most reliable
+
+                let sinSum = 0, cosSum = 0;
+                for (let i = 0; i < rolls.length; i++) {
+                    sinSum += Math.sin(rolls[i]) * weights[i];
+                    cosSum += Math.cos(rolls[i]) * weights[i];
+                }
+                const rollAngle = Math.atan2(sinSum, cosSum);
+
+                // ============================================
+                // X ROTATION (PITCH) - Palm up/down
+                // ============================================
+
+                // Use wrist to middle MCP for pitch
+                const handDirX = middleMcp.x - wrist.x;
+                const handDirY = middleMcp.y - wrist.y;
+                const handLength = Math.sqrt(handDirX * handDirX + handDirY * handDirY) + 0.001;
+                const pitchAngle = Math.atan2(handDirY, handLength);
+
+                // ============================================
+                // Y ROTATION (YAW) - Palm left/right twist
+                // ============================================
+
+                // Use Z depth difference between index and pinky
+                const depthDiff = pinkyMcp.z - indexMcp.z;
+                const handWidth = Math.sqrt(dx1 * dx1 + dy1 * dy1) + 0.001;
+                const yawAngle = Math.atan2(depthDiff, handWidth);
+
+                // ============================================
+                // APPLY EXTRA SMOOTHING FOR FIST MODE
+                // ============================================
+
+                // If in fist mode, apply stronger filtering
+                const isFist = this.handData.isFist;
+                const smoothFactor = isFist ? 0.6 : 1.0; // More smoothing for fist
+
+                // Blend with previous rotation for stability
+                const prevRot = this.handData.rawRotation;
+                const blend = isFist ? 0.3 : 0.5; // Slower response for fist = more stable
+
+                this.handData.rawRotation = {
+                    x: prevRot.x * (1 - blend) + (pitchAngle * 0.7 * smoothFactor) * blend,
+                    y: prevRot.y * (1 - blend) + (-yawAngle * 0.5 * smoothFactor) * blend,
+                    z: prevRot.z * (1 - blend) + (-rollAngle * smoothFactor) * blend
+                };
+            }
+
+            detectGestureStable(landmarks) {
+                const fingertips = [4, 8, 12, 16, 20];
+                const fingerPips = [3, 6, 10, 14, 18];
+                const fingerMcps = [2, 5, 9, 13, 17];
+
+                const wrist = landmarks[0];
+                const middleMcp = landmarks[9];
+                const palmCenter = {
+                    x: (wrist.x + middleMcp.x) / 2,
+                    y: (wrist.y + middleMcp.y) / 2,
+                    z: (wrist.z + middleMcp.z) / 2
+                };
+
+                const palmSize = Math.sqrt(
+                    Math.pow(middleMcp.x - wrist.x, 2) +
+                    Math.pow(middleMcp.y - wrist.y, 2) +
+                    Math.pow(middleMcp.z - wrist.z, 2)
+                );
+
+                let curledFingers = 0;
+
+                for (let i = 0; i < 5; i++) {
+                    const tip = landmarks[fingertips[i]];
+                    const pip = landmarks[fingerPips[i]];
+                    const mcp = landmarks[fingerMcps[i]];
+
+                    const tipToPalm = Math.sqrt(
+                        Math.pow(tip.x - palmCenter.x, 2) +
+                        Math.pow(tip.y - palmCenter.y, 2) +
+                        Math.pow(tip.z - palmCenter.z, 2)
+                    );
+
+                    const tipToWrist = Math.sqrt(
+                        Math.pow(tip.x - wrist.x, 2) +
+                        Math.pow(tip.y - wrist.y, 2) +
+                        Math.pow(tip.z - wrist.z, 2)
+                    );
+
+                    const mcpToWrist = Math.sqrt(
+                        Math.pow(mcp.x - wrist.x, 2) +
+                        Math.pow(mcp.y - wrist.y, 2) +
+                        Math.pow(mcp.z - wrist.z, 2)
+                    );
+
+                    const tipToPip = Math.sqrt(
+                        Math.pow(tip.x - pip.x, 2) +
+                        Math.pow(tip.y - pip.y, 2) +
+                        Math.pow(tip.z - pip.z, 2)
+                    );
+
+                    const pipToMcp = Math.sqrt(
+                        Math.pow(pip.x - mcp.x, 2) +
+                        Math.pow(pip.y - mcp.y, 2) +
+                        Math.pow(pip.z - mcp.z, 2)
+                    );
+
+                    const tipCloseThreshold = palmSize * (i === 0 ? 0.85 : 0.65);
+                    const isTipClose = tipToPalm < tipCloseThreshold;
+                    const isCurled = tipToWrist < mcpToWrist * 1.2;
+                    const isBent = tipToPip < pipToMcp * 0.85;
+
+                    if (isTipClose || (isCurled && isBent)) {
+                        curledFingers++;
+                    }
+                }
+
+                this.handData.fingersCurled = curledFingers;
+
+                // Gesture history for stability
+                this.gestureHistory.push(curledFingers >= 4 ? 1 : 0);
+                if (this.gestureHistory.length > this.gestureHistorySize) {
+                    this.gestureHistory.shift();
+                }
+
+                const avgGesture = this.gestureHistory.reduce((a, b) => a + b, 0) / this.gestureHistory.length;
+
+                // Hysteresis
+                if (avgGesture > 0.7) {
+                    this.handData.isFist = true;
+                    this.handData.isOpenHand = false;
+                } else if (avgGesture < 0.3) {
+                    this.handData.isFist = false;
+                    this.handData.isOpenHand = true;
+                }
+            }
+
+            // ============================================
+            // PARTICLE UPDATES
+            // ============================================
+
+            updateParticles() {
+                const positions = this.particles.geometry.attributes.position.array;
+                const colors = this.particles.geometry.attributes.color.array;
+                const hand = this.handData;
+
+                const lerpFactor = 1 - Math.pow(0.001, this.deltaTime);
+                const colorLerpFactor = 1 - Math.pow(0.005, this.deltaTime);
+
+                // ============================================
+                // DETERMINE TARGET STATE
+                // ============================================
+
+                let targetDispersion = 0;
+                let targetColorMix = 0;
+
+                if (hand.detected) {
+                    if (hand.isFist) {
+                        // FIST: Form torus, warm colors
+                        targetDispersion = 0;
+                        targetColorMix = 1;
+                    } else {
+                        // OPEN HAND: Disperse, cool colors with intensity
+                        targetDispersion = 1;
+                        targetColorMix = 0;
+                    }
+                } else {
+                    // NO HAND: Default torus, cool colors
+                    targetDispersion = 0;
+                    targetColorMix = 0;
+                }
+
+                // Smooth transition
+                this.dispersionAmount += (targetDispersion - this.dispersionAmount) * lerpFactor * 3;
+                this.currentColorMix += (targetColorMix - this.currentColorMix) * colorLerpFactor * 3;
+
+                // Update shader uniform
+                this.particles.material.uniforms.dispersion.value = this.dispersionAmount;
+
+                // ============================================
+                // UPDATE GROUP POSITION & ROTATION
+                // ============================================
+
+                if (hand.detected) {
+                    // Extra smoothing
+                    hand.renderPosition.x = this.positionSmooth.x.update(hand.stablePosition.x);
+                    hand.renderPosition.y = this.positionSmooth.y.update(hand.stablePosition.y);
+                    hand.renderPosition.z = this.positionSmooth.z.update(hand.stablePosition.z);
+
+                    hand.renderRotation.x = this.rotationSmooth.x.update(hand.stableRotation.x);
+                    hand.renderRotation.y = this.rotationSmooth.y.update(hand.stableRotation.y);
+                    hand.renderRotation.z = this.rotationSmooth.z.update(hand.stableRotation.z);
+
+                    // Apply to group - RELATIVE movement from initial position
+                    this.particleGroup.position.x += (hand.renderPosition.x - this.particleGroup.position.x) * lerpFactor * 4;
+                    this.particleGroup.position.y += (hand.renderPosition.y - this.particleGroup.position.y) * lerpFactor * 4;
+                    this.particleGroup.position.z += (hand.renderPosition.z - this.particleGroup.position.z) * lerpFactor * 3;
+
+                    // Rotation
+                    this.particleGroup.rotation.x += (hand.renderRotation.x - this.particleGroup.rotation.x) * lerpFactor * 3;
+                    this.particleGroup.rotation.y += (hand.renderRotation.y - this.particleGroup.rotation.y) * lerpFactor * 3;
+                    this.particleGroup.rotation.z += (hand.renderRotation.z - this.particleGroup.rotation.z) * lerpFactor * 3;
+
+                } else {
+                    // Return to center
+                    this.particleGroup.position.x *= (1 - lerpFactor * 2);
+                    this.particleGroup.position.y *= (1 - lerpFactor * 2);
+                    this.particleGroup.position.z *= (1 - lerpFactor * 2);
+
+                    // Reset rotation smoothly
+                    this.particleGroup.rotation.x *= (1 - lerpFactor * 1.5);
+                    this.particleGroup.rotation.y *= (1 - lerpFactor * 1.5);
+                    this.particleGroup.rotation.z += 0.001; // Gentle idle spin
+                }
+
+                // ============================================
+                // UPDATE INDIVIDUAL PARTICLES
+                // ============================================
+
+                for (let i = 0; i < this.particleCount; i++) {
+                    const base = this.basePositions[i];
+                    const dispersed = this.dispersedPositions[i];
+                    const current = this.currentLocalPositions[i];
+                    const velocity = this.velocities[i];
+
+                    // Calculate target position based on dispersion
+                    const d = this.dispersionAmount;
+
+                    // Breathing for both states
+                    const breathe = Math.sin(this.time * 0.8 + i * 0.003) * 0.02;
+
+                    // Target = lerp between torus and dispersed
+                    const targetX = base.x * (1 - d) * (1 + breathe) + dispersed.x * d;
+                    const targetY = base.y * (1 - d) * (1 + breathe) + dispersed.y * d;
+                    const targetZ = base.z * (1 - d) * (1 + breathe) + dispersed.z * d;
+
+                    // Add turbulence when dispersing
+                    let turbX = 0, turbY = 0, turbZ = 0;
+                    if (d > 0.1 && hand.detected) {
+                        const turbStrength = d * 0.05;
+                        turbX = Math.sin(this.time * 3 + i * 0.1) * turbStrength;
+                        turbY = Math.cos(this.time * 2.5 + i * 0.15) * turbStrength;
+                        turbZ = Math.sin(this.time * 2 + i * 0.2) * turbStrength * 0.5;
+
+                        // Add hand velocity influence when dispersed
+                        turbX += hand.velocity.x * d * 0.3;
+                        turbY += hand.velocity.y * d * 0.3;
+                    }
+
+                    // Spring physics
+                    const springStrength = hand.isFist ? 0.15 : 0.08;
+                    velocity.x += (targetX + turbX - current.x) * springStrength;
+                    velocity.y += (targetY + turbY - current.y) * springStrength;
+                    velocity.z += (targetZ + turbZ - current.z) * springStrength;
+
+                    // Damping
+                    const damping = 0.85;
+                    velocity.x *= damping;
+                    velocity.y *= damping;
+                    velocity.z *= damping;
+
+                    // Update position
+                    current.x += velocity.x;
+                    current.y += velocity.y;
+                    current.z += velocity.z;
+
+                    // Write to buffer
+                    positions[i * 3] = current.x;
+                    positions[i * 3 + 1] = current.y;
+                    positions[i * 3 + 2] = current.z;
+
+                    // ============================================
+                    // COLOR BLENDING
+                    // ============================================
+                    const coolColor = this.coolColors[i % this.coolColors.length];
+                    const warmColor = this.warmColors[i % this.warmColors.length];
+
+                    const mix = this.currentColorMix;
+
+                    // Add brightness boost when dispersing
+                    const disperseBrightness = 1 + this.dispersionAmount * 0.3;
+
+                    colors[i * 3] = (coolColor.r * (1 - mix) + warmColor.r * mix) * disperseBrightness;
+                    colors[i * 3 + 1] = (coolColor.g * (1 - mix) + warmColor.g * mix) * disperseBrightness;
+                    colors[i * 3 + 2] = (coolColor.b * (1 - mix) + warmColor.b * mix) * disperseBrightness;
+                }
+
+                this.particles.geometry.attributes.position.needsUpdate = true;
+                this.particles.geometry.attributes.color.needsUpdate = true;
+            }
+
+            // ============================================
+            // ANIMATION LOOP
+            // ============================================
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+
+                const currentTime = performance.now();
+                this.deltaTime = Math.min((currentTime - this.lastTime) / 1000, 0.1);
+                this.lastTime = currentTime;
+                this.time += this.deltaTime;
+
+                this.particles.material.uniforms.time.value = this.time;
+
+                this.updateParticles();
+
+                this.camera.position.set(0, 0, 10);
+                this.camera.lookAt(0, 0, 0);
+
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            onWindowResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        }
+
+        // Start
+        window.addEventListener('DOMContentLoaded', () => {
+            new QuantumHand();
+        });
+    </script>
+</body>
+
+</html>
