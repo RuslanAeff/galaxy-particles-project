@@ -1483,34 +1483,36 @@
                 const t = this.shapeTransition;
 
                 // ============================================
-                // SHAPE-SPECIFIC ROTATION ANIMATION
-                // Each shape has its own rotation characteristics
+                // SHAPE-SPECIFIC ANIMATION (VERY SUBTLE)
+                // Shapes mostly stay stable, only subtle internal movement
+                // Main rotation is controlled by HAND, not automatic
                 // ============================================
                 const gesture = this.currentGesture;
                 let shapeRotationSpeed = 0;
-                let shapeRotationAxis = 'y'; // Which axis to rotate around
+                let shapeRotationAxis = 'none'; // No auto-rotation by default
 
                 if (gesture === GESTURES.THUMBS_UP) {
-                    // Galaxy - slow majestic spiral rotation with internal movement
-                    shapeRotationSpeed = 0.15;
-                    shapeRotationAxis = 'galaxy'; // Special galaxy animation
+                    // Galaxy - very subtle internal movement only
+                    shapeRotationSpeed = 0.02; // Much slower!
+                    shapeRotationAxis = 'galaxy';
                 } else if (gesture === GESTURES.PEACE) {
-                    // DNA - medium rotation around vertical axis
-                    shapeRotationSpeed = 0.4;
+                    // DNA - very slow rotation
+                    shapeRotationSpeed = 0.05;
                     shapeRotationAxis = 'y';
                 } else if (gesture === GESTURES.POINTING) {
-                    // Vortex - VERY FAST rotation (tornado!)
-                    shapeRotationSpeed = 2.5;
+                    // Vortex - still fast because it's a tornado
+                    shapeRotationSpeed = 1.5;
                     shapeRotationAxis = 'y';
                 } else if (gesture === GESTURES.ROCK) {
-                    // Black Hole - medium accretion disk rotation
-                    shapeRotationSpeed = 0.6;
+                    // Black Hole - slow accretion
+                    shapeRotationSpeed = 0.1;
                     shapeRotationAxis = 'z';
                 } else if (gesture === GESTURES.OK) {
-                    // Atom - fast electron orbit
-                    shapeRotationSpeed = 0.8;
-                    shapeRotationAxis = 'multi'; // All axes
+                    // Atom - medium electron orbit
+                    shapeRotationSpeed = 0.3;
+                    shapeRotationAxis = 'multi';
                 }
+                // FIST, OPEN_HAND, NONE = no animation, completely stable
 
                 for (let i = 0; i < this.particleCount; i++) {
                     const current = this.currentLocalPositions[i];
