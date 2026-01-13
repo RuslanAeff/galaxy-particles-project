@@ -982,30 +982,64 @@
                 }
 
                 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                const statusText = document.getElementById('status-text');
+
+                // Update status
+                if (statusText) statusText.textContent = 'Model yükleniyor...';
 
                 try {
-                    this.hands = new Hands({
-                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+                    console.log('🔄 Initializing MediaPipe Hands...');
+
+                    // Create hands instance with timeout handling
+                    const handsPromise = new Promise((resolve, reject) => {
+                        try {
+                            const hands = new Hands({
+                                locateFile: (file) => {
+                                    console.log('Loading file:', file);
+                                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`;
+                                }
+                            });
+                            resolve(hands);
+                        } catch (e) {
+                            reject(e);
+                        }
                     });
 
-                    // Lower complexity for mobile performance
+                    // Timeout for model loading (20 seconds for mobile)
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('Model yükleme zaman aşımı')), 20000);
+                    });
+
+                    this.hands = await Promise.race([handsPromise, timeoutPromise]);
+                    console.log('✅ Hands instance created');
+
+                    // Very low thresholds for mobile
                     this.hands.setOptions({
                         maxNumHands: 1,
-                        modelComplexity: isMobile ? 0 : 1, // 0 = lite model for mobile
-                        minDetectionConfidence: isMobile ? 0.6 : 0.7,
-                        minTrackingConfidence: isMobile ? 0.5 : 0.6
+                        modelComplexity: 0, // Always use lite model for reliability
+                        minDetectionConfidence: 0.5,
+                        minTrackingConfidence: 0.4
                     });
 
                     this.hands.onResults((results) => this.onHandResults(results));
 
+                    // Wait for model to initialize
+                    if (statusText) statusText.textContent = 'Model hazırlanıyor...';
+
+                    // Initialize model by sending a frame
+                    await this.hands.initialize();
+                    console.log('✅ Hands model initialized');
+
                     // Use actual video dimensions
-                    const videoWidth = video.videoWidth || (isMobile ? 480 : 640);
-                    const videoHeight = video.videoHeight || (isMobile ? 360 : 480);
+                    const videoWidth = video.videoWidth || 480;
+                    const videoHeight = video.videoHeight || 360;
 
                     const camera = new Camera(video, {
                         onFrame: async () => {
                             try {
-                                await this.hands.send({ image: video });
+                                if (this.hands) {
+                                    await this.hands.send({ image: video });
+                                }
                             } catch (e) {
                                 // Silently handle frame errors
                             }
@@ -1017,12 +1051,17 @@
                     await camera.start();
                     console.log('🖐️ Hand tracking started successfully');
 
+                    if (statusText) statusText.textContent = 'El Bekleniyor...';
+
                 } catch (error) {
                     console.error('Hand tracking init error:', error);
-                    const statusText = document.getElementById('status-text');
+
                     if (statusText) {
                         statusText.textContent = 'El takibi başlatılamadı!';
                     }
+
+                    // Show alert with more info
+                    alert('El takibi başlatılamadı!\n\nHata: ' + error.message + '\n\nTarayıcınız WebGL/WASM desteklemiyor olabilir.\nChrome veya Firefox deneyin.');
                 }
             }
 
