@@ -1377,12 +1377,13 @@
                     thumbTip.y < wrist.y;
 
                 // Peace sign (index and middle extended, ring and pinky curled)
+                // Thumb can be in any position for peace
                 const isPeace = isIndexExtended && isMiddleExtended &&
-                    isRingCurled && isPinkyCurled && !isThumbExtended;
+                    isRingCurled && isPinkyCurled;
 
-                // Pointing (ONLY index extended, all others curled)
+                // Pointing (ONLY index extended, middle must be curled)
                 const isPointing = isIndexExtended &&
-                    isMiddleCurled && isRingCurled && isPinkyCurled && !isThumbExtended;
+                    isMiddleCurled && isRingCurled && isPinkyCurled;
 
                 // Rock sign (index and pinky extended, middle and ring MUST be curled)
                 const isRock = isIndexExtended && isPinkyExtended &&
@@ -1402,12 +1403,13 @@
                 const isOpenHand = isIndexExtended && isMiddleExtended &&
                     isRingExtended && isPinkyExtended;
 
-                // Determine gesture
+                // Determine gesture - ORDER MATTERS!
+                // Check more specific gestures first
                 if (isThumbUp) return GESTURES.THUMBS_UP;
                 if (isOK) return GESTURES.OK;
                 if (isRock) return GESTURES.ROCK;
-                if (isPeace) return GESTURES.PEACE;
-                if (isPointing && !isThumbExtended) return GESTURES.POINTING;
+                if (isPeace && !isPinkyExtended) return GESTURES.PEACE; // Make sure pinky is down
+                if (isPointing && !isMiddleExtended) return GESTURES.POINTING; // Make sure middle is down
                 if (isFist) return GESTURES.FIST;
                 if (isOpenHand) return GESTURES.OPEN_HAND;
 
