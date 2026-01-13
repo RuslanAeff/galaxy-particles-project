@@ -1556,15 +1556,9 @@
                             targetX = newX;
                             targetY = newY;
                         } else if (shapeRotationAxis === 'galaxy') {
-                            // GALAXY SPECIAL ANIMATION
-                            // Differential rotation - particles closer to center rotate faster
-                            const distFromCenter = Math.sqrt(targetX * targetX + targetZ * targetZ);
-                            const maxDist = 3.5;
-                            const normalizedDist = Math.min(distFromCenter / maxDist, 1);
-
-                            // Inner particles rotate faster (like real galaxy!)
-                            const differentialSpeed = 0.3 + (1 - normalizedDist) * 0.5;
-                            const galaxyAngle = this.time * differentialSpeed;
+                            // GALAXY ANIMATION - STABLE VERSION
+                            // All particles rotate together to preserve spiral structure
+                            const galaxyAngle = this.time * shapeRotationSpeed;
                             const cosG = Math.cos(galaxyAngle);
                             const sinG = Math.sin(galaxyAngle);
 
@@ -1573,18 +1567,12 @@
                             targetX = newX;
                             targetZ = newZ;
 
-                            // Center pulsation - core breathes
-                            const pulsation = 1 + Math.sin(this.time * 2) * 0.05 * (1 - normalizedDist);
+                            // Very subtle center glow pulsation only
+                            const distFromCenter = Math.sqrt(targetX * targetX + targetZ * targetZ);
+                            const normalizedDist = Math.min(distFromCenter / 3.5, 1);
+                            const pulsation = 1 + Math.sin(this.time * 1.5) * 0.02 * (1 - normalizedDist);
                             targetX *= pulsation;
                             targetZ *= pulsation;
-
-                            // Subtle vertical wave (like disk wobble)
-                            targetY += Math.sin(this.time * 1.5 + distFromCenter * 2) * 0.03 * (1 - normalizedDist * 0.5);
-
-                            // Particles drift outward slightly then back (breathing effect)
-                            const breathe = Math.sin(this.time * 0.5 + i * 0.01) * 0.02;
-                            targetX *= (1 + breathe);
-                            targetZ *= (1 + breathe);
 
                         } else if (shapeRotationAxis === 'multi') {
                             // Multi-axis rotation for atom
