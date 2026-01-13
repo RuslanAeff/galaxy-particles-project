@@ -1371,8 +1371,17 @@
                 const isRingCurled = ringExtension < curledThreshold;
                 const isPinkyCurled = pinkyExtension < curledThreshold;
 
-                // Thumb is up (thumb extended AND above wrist, others curled)
-                const isThumbUp = isThumbExtended &&
+                // Thumb is up (thumb clearly extended away from palm AND above wrist, others curled)
+                // Additional check: thumb tip should be far from index MCP (not tucked)
+                const thumbToIndexMcpDist = this.distance(thumbTip, indexMcp);
+                const thumbToWristDist = this.distance(thumbTip, wrist);
+                const palmWidth = this.distance(indexMcp, landmarks[17]); // index MCP to pinky MCP
+
+                const isThumbReallyUp = thumbExtension > 1.2 &&
+                    thumbToIndexMcpDist > palmWidth * 0.5 && // Thumb not tucked in
+                    thumbTip.y < thumbMcp.y; // Thumb pointing upward
+
+                const isThumbUp = isThumbReallyUp &&
                     isIndexCurled && isMiddleCurled && isRingCurled && isPinkyCurled &&
                     thumbTip.y < wrist.y;
 
@@ -1395,9 +1404,11 @@
                 const isOK = thumbIndexDist < palmSize * 0.25 &&
                     isMiddleExtended && isRingExtended && isPinkyExtended;
 
-                // Fist (all fingers curled)
-                const isFist = !isThumbExtended && !isIndexExtended && !isMiddleExtended &&
-                    !isRingExtended && !isPinkyExtended;
+                // Fist (all fingers curled AND thumb close to palm)
+                const thumbToPalmDist = this.distance(thumbTip, landmarks[9]); // thumb to middle MCP
+                const isThumbTucked = thumbToPalmDist < palmWidth * 0.8;
+                const isFist = !isIndexExtended && !isMiddleExtended &&
+                    !isRingExtended && !isPinkyExtended && isThumbTucked;
 
                 // Open hand (all fingers extended)
                 const isOpenHand = isIndexExtended && isMiddleExtended &&
