@@ -1056,13 +1056,65 @@
                 } catch (error) {
                     console.error('Hand tracking init error:', error);
 
-                    if (statusText) {
-                        statusText.textContent = 'El takibi başlatılamadı!';
-                    }
-
-                    // Show alert with more info
-                    alert('El takibi başlatılamadı!\n\nHata: ' + error.message + '\n\nTarayıcınız WebGL/WASM desteklemiyor olabilir.\nChrome veya Firefox deneyin.');
+                    // Start demo mode instead
+                    this.startDemoMode();
                 }
+            }
+
+            startDemoMode() {
+                console.log('🎮 Starting Demo Mode...');
+
+                const statusDot = document.getElementById('status-dot');
+                const statusText = document.getElementById('status-text');
+                const gestureIcon = document.getElementById('gesture-icon');
+                const gestureText = document.getElementById('gesture-text');
+                const shapeName = document.getElementById('shape-name');
+
+                if (statusDot) statusDot.classList.add('active');
+                if (statusText) statusText.textContent = 'Demo Modu Aktif';
+                if (gestureText) gestureText.textContent = 'Dokunarak değiştir';
+
+                // Demo shapes to cycle through
+                const demoShapes = [
+                    { gesture: GESTURES.THUMBS_UP, icon: '👍', name: '🌌 Galaksi' },
+                    { gesture: GESTURES.PEACE, icon: '✌️', name: '🧬 DNA' },
+                    { gesture: GESTURES.POINTING, icon: '☝️', name: '🌀 Vortex' },
+                    { gesture: GESTURES.ROCK, icon: '🤘', name: '⚫ Kara Delik' },
+                    { gesture: GESTURES.OK, icon: '👌', name: '⚛️ Atom' },
+                    { gesture: GESTURES.FIST, icon: '✊', name: '⭕ Halka' },
+                    { gesture: GESTURES.OPEN_HAND, icon: '🖐️', name: '💫 Dağılma' }
+                ];
+
+                let currentIndex = 0;
+
+                // Function to switch to next shape
+                const nextShape = () => {
+                    currentIndex = (currentIndex + 1) % demoShapes.length;
+                    const shape = demoShapes[currentIndex];
+
+                    this.targetGesture = shape.gesture;
+                    if (gestureIcon) gestureIcon.textContent = shape.icon;
+                    if (shapeName) shapeName.textContent = shape.name;
+
+                    console.log('Demo shape:', shape.name);
+                };
+
+                // Auto cycle every 5 seconds
+                setInterval(nextShape, 5000);
+
+                // Touch/click to change shape immediately
+                document.body.addEventListener('click', nextShape);
+                document.body.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    nextShape();
+                });
+
+                // Start with first shape
+                nextShape();
+
+                // Start animation
+                this.hideLoading();
+                this.animate();
             }
 
             onHandResults(results) {
