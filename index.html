@@ -546,26 +546,41 @@
                 const armCount = 4;
                 const spiralTightness = 0.5;
 
+                // Store spiral parameters for animation
+                this.galaxyParams = [];
+
                 for (let i = 0; i < count; i++) {
                     const arm = i % armCount;
                     const armOffset = (arm / armCount) * Math.PI * 2;
 
-                    // Distance from center
+                    // Distance from center (t value 0-1)
                     const t = Math.pow(Math.random(), 0.5);
                     const distance = t * scale * 1.8;
 
-                    // Spiral angle
-                    const spiralAngle = distance * spiralTightness + armOffset;
-
-                    // Add some scatter
+                    // Add some scatter (fixed per particle)
                     const scatter = (1 - t * 0.7) * 0.4 * scale;
                     const scatterX = (Math.random() - 0.5) * scatter;
                     const scatterY = (Math.random() - 0.5) * scatter * 0.15;
                     const scatterZ = (Math.random() - 0.5) * scatter;
 
-                    // Bulge in center (more particles, more height)
+                    // Bulge in center
                     const bulgeFactor = Math.exp(-distance * 1.5);
                     const bulgeHeight = bulgeFactor * (Math.random() - 0.5) * scale * 0.4;
+
+                    // Store parameters for animation
+                    this.galaxyParams.push({
+                        arm: arm,
+                        armOffset: armOffset,
+                        t: t,
+                        scale: scale,
+                        scatterX: scatterX,
+                        scatterY: scatterY,
+                        scatterZ: scatterZ,
+                        bulgeHeight: bulgeHeight
+                    });
+
+                    // Spiral angle
+                    const spiralAngle = distance * spiralTightness + armOffset;
 
                     positions.push({
                         x: Math.cos(spiralAngle) * distance + scatterX,
@@ -1556,23 +1571,28 @@
                             targetX = newX;
                             targetY = newY;
                         } else if (shapeRotationAxis === 'galaxy') {
-                            // GALAXY ANIMATION - STABLE VERSION
-                            // All particles rotate together to preserve spiral structure
-                            const galaxyAngle = this.time * shapeRotationSpeed;
-                            const cosG = Math.cos(galaxyAngle);
-                            const sinG = Math.sin(galaxyAngle);
+                            // GALAXY ANIMATION - PARTICLES FLOW ALONG SPIRAL ARMS
+                            // Use stored parameters to animate particles along spirals
+                            if (this.galaxyParams && this.galaxyParams[i]) {
+                                const params = this.galaxyParams[i];
+                                const spiralTightness = 0.5;
+                                const flowSpeed = 0.03; // How fast particles flow inward
 
-                            const newX = targetX * cosG - targetZ * sinG;
-                            const newZ = targetX * sinG + targetZ * cosG;
-                            targetX = newX;
-                            targetZ = newZ;
+                                // Animate t value (position along spiral) - flow inward
+                                let animatedT = params.t - (this.time * flowSpeed) % 1;
+                                if (animatedT < 0) animatedT += 1; // Wrap around
 
-                            // Very subtle center glow pulsation only
-                            const distFromCenter = Math.sqrt(targetX * targetX + targetZ * targetZ);
-                            const normalizedDist = Math.min(distFromCenter / 3.5, 1);
-                            const pulsation = 1 + Math.sin(this.time * 1.5) * 0.02 * (1 - normalizedDist);
-                            targetX *= pulsation;
-                            targetZ *= pulsation;
+                                const distance = animatedT * params.scale * 1.8;
+                                const spiralAngle = distance * spiralTightness + params.armOffset;
+
+                                // Calculate new position on spiral
+                                const scatter = (1 - animatedT * 0.7) * 0.4 * params.scale;
+                                const scatterRatio = animatedT / Math.max(params.t, 0.01);
+
+                                targetX = Math.cos(spiralAngle) * distance + params.scatterX * scatterRatio;
+                                targetY = params.bulgeHeight * (1 - animatedT) + params.scatterY * scatterRatio;
+                                targetZ = Math.sin(spiralAngle) * distance + params.scatterZ * scatterRatio;
+                            }
 
                         } else if (shapeRotationAxis === 'multi') {
                             // Multi-axis rotation for atom
