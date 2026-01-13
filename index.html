@@ -129,14 +129,18 @@
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 13px;
             text-align: center;
             z-index: 100;
             pointer-events: none;
             text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
-            max-width: 700px;
-            line-height: 1.6;
+            max-width: 900px;
+            line-height: 1.8;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 12px 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(5px);
         }
 
         #hand-status {
@@ -144,7 +148,7 @@
             bottom: 20px;
             left: 20px;
             padding: 14px 20px;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.85);
             border: 1px solid rgba(0, 200, 255, 0.4);
             border-radius: 16px;
             color: #00d4ff;
@@ -153,7 +157,7 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
-            min-width: 220px;
+            min-width: 250px;
             backdrop-filter: blur(10px);
         }
 
@@ -176,11 +180,6 @@
             box-shadow: 0 0 12px #00ff88;
         }
 
-        .status-dot.fist {
-            background: #fbbf24;
-            box-shadow: 0 0 12px #fbbf24;
-        }
-
         .gesture-indicator {
             display: flex;
             align-items: center;
@@ -192,10 +191,10 @@
         }
 
         .gesture-icon {
-            font-size: 20px;
+            font-size: 24px;
         }
 
-        .rotation-indicator {
+        .shape-indicator {
             display: flex;
             align-items: center;
             gap: 8px;
@@ -205,8 +204,8 @@
             border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .rotation-value {
-            font-family: monospace;
+        .shape-name {
+            font-weight: bold;
             color: #00d4ff;
         }
     </style>
@@ -225,9 +224,13 @@
     </div>
 
     <div id="instructions">
-        ✋ <strong>Açık El:</strong> Parçacıkları dağıt |
-        ✊ <strong>Yumruk:</strong> Halka oluştur |
-        🔄 <strong>Döndür:</strong> Elinizi çevirin
+        🖐️ <strong>Açık El:</strong> Dağıt |
+        ✊ <strong>Yumruk:</strong> Halka |
+        👍 <strong>Başparmak:</strong> Galaksi |
+        ✌️ <strong>Peace:</strong> DNA |
+        ☝️ <strong>İşaret:</strong> Vortex |
+        🤘 <strong>Rock:</strong> Kara Delik |
+        👌 <strong>OK:</strong> Atom
     </div>
 
     <div id="hand-status">
@@ -239,9 +242,9 @@
             <span class="gesture-icon" id="gesture-icon">🖐️</span>
             <span id="gesture-text">Hareket yok</span>
         </div>
-        <div class="rotation-indicator">
-            <span>🔄 Dönüş:</span>
-            <span class="rotation-value" id="rotation-value">0°</span>
+        <div class="shape-indicator">
+            <span>Şekil:</span>
+            <span class="shape-name" id="shape-name">Varsayılan</span>
         </div>
     </div>
 
@@ -254,9 +257,23 @@
 
     <script>
         // ============================================
-        // QUANTUM HAND - Complete Version
-        // Dispersion + Formation + Stable Tracking
+        // QUANTUM HAND - Multi-Gesture Version
+        // 7 Gestures, 7 Unique Shapes
         // ============================================
+
+        // ============================================
+        // GESTURE TYPES
+        // ============================================
+        const GESTURES = {
+            NONE: 'none',
+            OPEN_HAND: 'open_hand',      // 🖐️ Dispersion
+            FIST: 'fist',                // ✊ Torus
+            THUMBS_UP: 'thumbs_up',      // 👍 Galaxy
+            PEACE: 'peace',              // ✌️ DNA Helix
+            POINTING: 'pointing',        // ☝️ Vortex
+            ROCK: 'rock',                // 🤘 Black Hole
+            OK: 'ok'                     // 👌 Atom
+        };
 
         // ============================================
         // KALMAN FILTER
@@ -312,19 +329,17 @@
         // ============================================
         class QuantumHand {
             constructor() {
-                // Three.js
                 this.scene = null;
                 this.camera = null;
                 this.renderer = null;
                 this.particles = null;
                 this.particleGroup = null;
-                this.particleCount = 10000;
+                this.particleCount = 12000;
 
-                // Particle data
-                this.basePositions = [];         // Original torus shape
-                this.currentLocalPositions = []; // Current positions  
-                this.velocities = [];            // For physics
-                this.dispersedPositions = [];    // Random scattered positions
+                // Shape positions for each gesture
+                this.shapePositions = {};
+                this.currentLocalPositions = [];
+                this.velocities = [];
 
                 // Time tracking
                 this.lastTime = performance.now();
@@ -333,12 +348,8 @@
 
                 // Hand detection state
                 this.wasHandDetected = false;
-                this.handDetectedTime = 0;
-                this.initialHandPosition = { x: 0, y: 0, z: 0 };
 
-                // ============================================
-                // STABILIZATION FILTERS
-                // ============================================
+                // Stabilization filters
                 this.positionFilters = {
                     x: new KalmanFilter(0.005, 0.08, 1),
                     y: new KalmanFilter(0.005, 0.08, 1),
@@ -352,20 +363,20 @@
                 };
 
                 this.rotationFilters = {
-                    x: new KalmanFilter(0.001, 0.15, 1),  // Lower process noise = more stable
+                    x: new KalmanFilter(0.001, 0.15, 1),
                     y: new KalmanFilter(0.001, 0.15, 1),
-                    z: new KalmanFilter(0.001, 0.12, 1)   // Z (roll) is most important
+                    z: new KalmanFilter(0.001, 0.12, 1)
                 };
 
                 this.rotationSmooth = {
-                    x: new ExponentialSmooth(0.05),  // Lower alpha = smoother
+                    x: new ExponentialSmooth(0.05),
                     y: new ExponentialSmooth(0.05),
-                    z: new ExponentialSmooth(0.06)   // Slightly faster for roll
+                    z: new ExponentialSmooth(0.06)
                 };
 
-                // Gesture history for stability
+                // Gesture history
                 this.gestureHistory = [];
-                this.gestureHistorySize = 8;
+                this.gestureHistorySize = 10;
 
                 // Hand tracking data
                 this.handData = {
@@ -376,38 +387,56 @@
                     stableRotation: { x: 0, y: 0, z: 0 },
                     renderPosition: { x: 0, y: 0, z: 0 },
                     renderRotation: { x: 0, y: 0, z: 0 },
-                    isFist: false,
-                    isOpenHand: true,
-                    fingersCurled: 0,
+                    lastStableRotation: { x: 0, y: 0, z: 0 },
+                    gesture: GESTURES.NONE,
                     velocity: { x: 0, y: 0, z: 0 }
                 };
 
-                // Animation states
-                this.dispersionAmount = 0;    // 0 = formed, 1 = fully dispersed
-                this.currentColorMix = 0;     // 0 = cool, 1 = warm
+                this.rotationDeadZone = 0.03;
 
-                // Shape settings
-                this.shapeScale = 1.6;
-                this.dispersionRadius = 5;    // How far particles scatter
+                // Current shape transition
+                this.currentGesture = GESTURES.NONE;
+                this.targetGesture = GESTURES.NONE;
+                this.shapeTransition = 0;
 
-                // Color palettes
-                this.coolColors = [
-                    new THREE.Color(0x00d4ff), // Cyan
-                    new THREE.Color(0x00b4d8), // Light Blue
-                    new THREE.Color(0x0077b6), // Blue
-                    new THREE.Color(0xa855f7), // Purple
-                    new THREE.Color(0x7c3aed), // Violet
-                    new THREE.Color(0x06b6d4), // Teal
-                ];
+                // Shape scale
+                this.shapeScale = 2.0;
 
-                this.warmColors = [
-                    new THREE.Color(0xfbbf24), // Gold
-                    new THREE.Color(0xf59e0b), // Amber
-                    new THREE.Color(0xef4444), // Red
-                    new THREE.Color(0xf97316), // Orange
-                    new THREE.Color(0xeab308), // Yellow
-                    new THREE.Color(0xdc2626), // Dark Red
-                ];
+                // Color palettes for each gesture
+                this.gestureColors = {
+                    [GESTURES.OPEN_HAND]: [
+                        new THREE.Color(0x00d4ff), new THREE.Color(0x00b4d8),
+                        new THREE.Color(0x0077b6), new THREE.Color(0xa855f7)
+                    ],
+                    [GESTURES.FIST]: [
+                        new THREE.Color(0xfbbf24), new THREE.Color(0xf59e0b),
+                        new THREE.Color(0xef4444), new THREE.Color(0xf97316)
+                    ],
+                    [GESTURES.THUMBS_UP]: [
+                        new THREE.Color(0x818cf8), new THREE.Color(0xa78bfa),
+                        new THREE.Color(0xc4b5fd), new THREE.Color(0xe879f9)
+                    ],
+                    [GESTURES.PEACE]: [
+                        new THREE.Color(0x34d399), new THREE.Color(0x10b981),
+                        new THREE.Color(0x06b6d4), new THREE.Color(0x22d3ee)
+                    ],
+                    [GESTURES.POINTING]: [
+                        new THREE.Color(0xf472b6), new THREE.Color(0xec4899),
+                        new THREE.Color(0xdb2777), new THREE.Color(0xbe185d)
+                    ],
+                    [GESTURES.ROCK]: [
+                        new THREE.Color(0x1f2937), new THREE.Color(0x374151),
+                        new THREE.Color(0xfbbf24), new THREE.Color(0xf97316)
+                    ],
+                    [GESTURES.OK]: [
+                        new THREE.Color(0x60a5fa), new THREE.Color(0x3b82f6),
+                        new THREE.Color(0x22d3ee), new THREE.Color(0x06b6d4)
+                    ],
+                    [GESTURES.NONE]: [
+                        new THREE.Color(0x00d4ff), new THREE.Color(0xa855f7),
+                        new THREE.Color(0x7c3aed), new THREE.Color(0x06b6d4)
+                    ]
+                };
 
                 this.init();
             }
@@ -415,6 +444,9 @@
             async init() {
                 this.updateLoadingText('Three.js başlatılıyor...');
                 await this.initThreeJS();
+
+                this.updateLoadingText('Şekiller oluşturuluyor...');
+                await this.generateAllShapes();
 
                 this.updateLoadingText('Parçacık sistemi oluşturuluyor...');
                 await this.createParticles();
@@ -437,6 +469,263 @@
                 setTimeout(() => {
                     document.getElementById('loading').classList.add('hidden');
                 }, 500);
+            }
+
+            // ============================================
+            // SHAPE GENERATORS
+            // ============================================
+
+            generateAllShapes() {
+                return new Promise((resolve) => {
+                    const count = this.particleCount;
+                    const scale = this.shapeScale;
+
+                    // Generate all shape positions
+                    this.shapePositions[GESTURES.NONE] = this.generateTorus(count, scale);
+                    this.shapePositions[GESTURES.OPEN_HAND] = this.generateDispersion(count, scale * 2.5);
+                    this.shapePositions[GESTURES.FIST] = this.generateTorus(count, scale);
+                    this.shapePositions[GESTURES.THUMBS_UP] = this.generateGalaxy(count, scale);
+                    this.shapePositions[GESTURES.PEACE] = this.generateDNA(count, scale);
+                    this.shapePositions[GESTURES.POINTING] = this.generateVortex(count, scale);
+                    this.shapePositions[GESTURES.ROCK] = this.generateBlackHole(count, scale);
+                    this.shapePositions[GESTURES.OK] = this.generateAtom(count, scale);
+
+                    resolve();
+                });
+            }
+
+            // 🌌 GALAXY - Spiral arms like Milky Way
+            generateGalaxy(count, scale) {
+                const positions = [];
+                const armCount = 4;
+                const spiralTightness = 0.5;
+
+                for (let i = 0; i < count; i++) {
+                    const arm = i % armCount;
+                    const armOffset = (arm / armCount) * Math.PI * 2;
+
+                    // Distance from center
+                    const t = Math.pow(Math.random(), 0.5);
+                    const distance = t * scale * 1.8;
+
+                    // Spiral angle
+                    const spiralAngle = distance * spiralTightness + armOffset;
+
+                    // Add some scatter
+                    const scatter = (1 - t * 0.7) * 0.4 * scale;
+                    const scatterX = (Math.random() - 0.5) * scatter;
+                    const scatterY = (Math.random() - 0.5) * scatter * 0.15;
+                    const scatterZ = (Math.random() - 0.5) * scatter;
+
+                    // Bulge in center (more particles, more height)
+                    const bulgeFactor = Math.exp(-distance * 1.5);
+                    const bulgeHeight = bulgeFactor * (Math.random() - 0.5) * scale * 0.4;
+
+                    positions.push({
+                        x: Math.cos(spiralAngle) * distance + scatterX,
+                        y: bulgeHeight + scatterY,
+                        z: Math.sin(spiralAngle) * distance + scatterZ
+                    });
+                }
+                return positions;
+            }
+
+            // 🧬 DNA - Double helix
+            generateDNA(count, scale) {
+                const positions = [];
+                const helixRadius = scale * 0.4;
+                const helixHeight = scale * 3;
+                const turns = 4;
+
+                for (let i = 0; i < count; i++) {
+                    const t = i / count;
+                    const angle = t * Math.PI * 2 * turns;
+                    const y = (t - 0.5) * helixHeight;
+
+                    // Determine which strand (0 or 1) or connecting bar
+                    const strand = i % 10;
+
+                    if (strand < 4) {
+                        // Strand 1
+                        positions.push({
+                            x: Math.cos(angle) * helixRadius + (Math.random() - 0.5) * 0.1,
+                            y: y + (Math.random() - 0.5) * 0.1,
+                            z: Math.sin(angle) * helixRadius + (Math.random() - 0.5) * 0.1
+                        });
+                    } else if (strand < 8) {
+                        // Strand 2 (opposite phase)
+                        positions.push({
+                            x: Math.cos(angle + Math.PI) * helixRadius + (Math.random() - 0.5) * 0.1,
+                            y: y + (Math.random() - 0.5) * 0.1,
+                            z: Math.sin(angle + Math.PI) * helixRadius + (Math.random() - 0.5) * 0.1
+                        });
+                    } else {
+                        // Connecting bars (base pairs)
+                        const barT = Math.random();
+                        const x1 = Math.cos(angle) * helixRadius;
+                        const z1 = Math.sin(angle) * helixRadius;
+                        const x2 = Math.cos(angle + Math.PI) * helixRadius;
+                        const z2 = Math.sin(angle + Math.PI) * helixRadius;
+
+                        positions.push({
+                            x: x1 + (x2 - x1) * barT,
+                            y: y,
+                            z: z1 + (z2 - z1) * barT
+                        });
+                    }
+                }
+                return positions;
+            }
+
+            // 🌀 VORTEX - Upward spiral tornado
+            generateVortex(count, scale) {
+                const positions = [];
+                const maxRadius = scale * 1.2;
+                const height = scale * 3;
+
+                for (let i = 0; i < count; i++) {
+                    const t = i / count;
+                    const y = (t - 0.5) * height;
+
+                    // Radius decreases as we go up (tornado shape)
+                    const heightFactor = 1 - t;
+                    const radius = maxRadius * (0.1 + heightFactor * 0.9);
+
+                    // Spiral angle increases with height
+                    const spiralSpeed = 3 + t * 5;
+                    const angle = t * Math.PI * 2 * spiralSpeed + Math.random() * 0.5;
+
+                    // Add turbulence
+                    const turbulence = (Math.random() - 0.5) * radius * 0.3;
+
+                    positions.push({
+                        x: Math.cos(angle) * (radius + turbulence),
+                        y: y,
+                        z: Math.sin(angle) * (radius + turbulence)
+                    });
+                }
+                return positions;
+            }
+
+            // ⚫ BLACK HOLE - Event horizon with accretion disk
+            generateBlackHole(count, scale) {
+                const positions = [];
+                const diskRadius = scale * 1.5;
+                const holeRadius = scale * 0.3;
+
+                for (let i = 0; i < count; i++) {
+                    const t = i / count;
+
+                    if (t < 0.15) {
+                        // Event horizon - dense dark center
+                        const r = Math.random() * holeRadius;
+                        const angle = Math.random() * Math.PI * 2;
+                        positions.push({
+                            x: Math.cos(angle) * r,
+                            y: (Math.random() - 0.5) * holeRadius * 0.5,
+                            z: Math.sin(angle) * r
+                        });
+                    } else {
+                        // Accretion disk - swirling matter
+                        const distFromCenter = holeRadius + Math.pow(Math.random(), 0.5) * (diskRadius - holeRadius);
+                        const angle = Math.random() * Math.PI * 2;
+
+                        // Disk is denser toward center, thinner
+                        const thickness = 0.05 * scale * (1 - (distFromCenter - holeRadius) / (diskRadius - holeRadius));
+
+                        // Add spiral structure
+                        const spiralOffset = distFromCenter * 0.3;
+
+                        positions.push({
+                            x: Math.cos(angle + spiralOffset) * distFromCenter,
+                            y: (Math.random() - 0.5) * thickness,
+                            z: Math.sin(angle + spiralOffset) * distFromCenter
+                        });
+                    }
+                }
+                return positions;
+            }
+
+            // ⚛️ ATOM - Nucleus with orbiting electrons
+            generateAtom(count, scale) {
+                const positions = [];
+                const nucleusRadius = scale * 0.25;
+                const orbitRadius = scale * 1.2;
+                const orbitCount = 3;
+
+                for (let i = 0; i < count; i++) {
+                    const t = i / count;
+
+                    if (t < 0.2) {
+                        // Nucleus (protons and neutrons)
+                        const phi = Math.random() * Math.PI * 2;
+                        const theta = Math.acos(2 * Math.random() - 1);
+                        const r = Math.pow(Math.random(), 0.33) * nucleusRadius;
+
+                        positions.push({
+                            x: r * Math.sin(theta) * Math.cos(phi),
+                            y: r * Math.sin(theta) * Math.sin(phi),
+                            z: r * Math.cos(theta)
+                        });
+                    } else {
+                        // Electron orbits
+                        const orbit = Math.floor((i * orbitCount) / count);
+                        const orbitAngle = orbit * (Math.PI / orbitCount);
+
+                        const angleInOrbit = Math.random() * Math.PI * 2;
+                        const r = orbitRadius * (0.8 + Math.random() * 0.4);
+
+                        // Rotate orbit plane
+                        const x = Math.cos(angleInOrbit) * r;
+                        const y = Math.sin(angleInOrbit) * r * Math.cos(orbitAngle);
+                        const z = Math.sin(angleInOrbit) * r * Math.sin(orbitAngle);
+
+                        // Add scatter
+                        positions.push({
+                            x: x + (Math.random() - 0.5) * 0.1,
+                            y: y + (Math.random() - 0.5) * 0.1,
+                            z: z + (Math.random() - 0.5) * 0.1
+                        });
+                    }
+                }
+                return positions;
+            }
+
+            // ⭕ TORUS
+            generateTorus(count, scale) {
+                const positions = [];
+                const torusRadius = scale * 0.8;
+                const tubeRadius = scale * 0.25;
+
+                for (let i = 0; i < count; i++) {
+                    const u = (i / count) * Math.PI * 2 + Math.random() * 0.1;
+                    const v = Math.random() * Math.PI * 2;
+                    const r = tubeRadius + (Math.random() - 0.5) * 0.1;
+
+                    positions.push({
+                        x: (torusRadius + r * Math.cos(v)) * Math.cos(u),
+                        y: (torusRadius + r * Math.cos(v)) * Math.sin(u),
+                        z: r * Math.sin(v)
+                    });
+                }
+                return positions;
+            }
+
+            // 💫 DISPERSION
+            generateDispersion(count, scale) {
+                const positions = [];
+                for (let i = 0; i < count; i++) {
+                    const phi = Math.random() * Math.PI * 2;
+                    const theta = Math.acos(2 * Math.random() - 1);
+                    const r = scale * (0.3 + Math.random() * 0.7);
+
+                    positions.push({
+                        x: r * Math.sin(theta) * Math.cos(phi),
+                        y: r * Math.sin(theta) * Math.sin(phi),
+                        z: r * Math.cos(theta)
+                    });
+                }
+                return positions;
             }
 
             // ============================================
@@ -465,7 +754,6 @@
                     this.renderer.setClearColor(0x000000, 1);
                     document.getElementById('container').appendChild(this.renderer.domElement);
 
-                    // Particle group for transforms
                     this.particleGroup = new THREE.Group();
                     this.scene.add(this.particleGroup);
 
@@ -475,42 +763,6 @@
                 });
             }
 
-            generateTorusPositions(count, scale = 1) {
-                const positions = [];
-                const torusRadius = 1.5 * scale;
-                const tubeRadius = 0.5 * scale;
-
-                for (let i = 0; i < count; i++) {
-                    const u = (i / count) * Math.PI * 2 + Math.random() * 0.1;
-                    const v = Math.random() * Math.PI * 2;
-                    const r = tubeRadius + (Math.random() - 0.5) * 0.1;
-
-                    positions.push({
-                        x: (torusRadius + r * Math.cos(v)) * Math.cos(u),
-                        y: (torusRadius + r * Math.cos(v)) * Math.sin(u),
-                        z: r * Math.sin(v)
-                    });
-                }
-                return positions;
-            }
-
-            generateDispersedPositions(count, radius = 5) {
-                const positions = [];
-                for (let i = 0; i < count; i++) {
-                    // Random spherical distribution
-                    const phi = Math.random() * Math.PI * 2;
-                    const theta = Math.acos(2 * Math.random() - 1);
-                    const r = radius * (0.5 + Math.random() * 0.5);
-
-                    positions.push({
-                        x: r * Math.sin(theta) * Math.cos(phi),
-                        y: r * Math.sin(theta) * Math.sin(phi),
-                        z: r * Math.cos(theta)
-                    });
-                }
-                return positions;
-            }
-
             createParticles() {
                 return new Promise((resolve) => {
                     const geometry = new THREE.BufferGeometry();
@@ -518,22 +770,19 @@
                     const colors = new Float32Array(this.particleCount * 3);
                     const sizes = new Float32Array(this.particleCount);
 
-                    // Generate base positions
-                    this.basePositions = this.generateTorusPositions(this.particleCount, this.shapeScale);
-                    this.dispersedPositions = this.generateDispersedPositions(this.particleCount, this.dispersionRadius);
+                    const defaultPositions = this.shapePositions[GESTURES.NONE];
 
                     for (let i = 0; i < this.particleCount; i++) {
-                        const basePos = this.basePositions[i];
+                        const pos = defaultPositions[i];
 
-                        positions[i * 3] = basePos.x;
-                        positions[i * 3 + 1] = basePos.y;
-                        positions[i * 3 + 2] = basePos.z;
+                        positions[i * 3] = pos.x;
+                        positions[i * 3 + 1] = pos.y;
+                        positions[i * 3 + 2] = pos.z;
 
-                        this.currentLocalPositions.push({ ...basePos });
+                        this.currentLocalPositions.push({ ...pos });
                         this.velocities.push({ x: 0, y: 0, z: 0 });
 
-                        // Initial colors
-                        const color = this.coolColors[i % this.coolColors.length];
+                        const color = this.gestureColors[GESTURES.NONE][i % 4];
                         colors[i * 3] = color.r;
                         colors[i * 3 + 1] = color.g;
                         colors[i * 3 + 2] = color.b;
@@ -547,23 +796,19 @@
 
                     const material = new THREE.ShaderMaterial({
                         uniforms: {
-                            time: { value: 0 },
-                            dispersion: { value: 0.0 }
+                            time: { value: 0 }
                         },
                         vertexShader: `
                             attribute float size;
                             varying vec3 vColor;
                             uniform float time;
-                            uniform float dispersion;
                             
                             void main() {
                                 vColor = color;
                                 vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                                 
-                                // Size varies with dispersion
-                                float sizeMultiplier = 1.0 + dispersion * 0.3;
                                 float pulse = 1.0 + 0.1 * sin(time * 2.0 + position.x * 1.5);
-                                gl_PointSize = size * sizeMultiplier * pulse * (400.0 / -mvPosition.z);
+                                gl_PointSize = size * pulse * (400.0 / -mvPosition.z);
                                 
                                 gl_Position = projectionMatrix * mvPosition;
                             }
@@ -606,11 +851,7 @@
 
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({
-                        video: {
-                            width: { ideal: 640 },
-                            height: { ideal: 480 },
-                            facingMode: 'user'
-                        }
+                        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
                     });
                     video.srcObject = stream;
 
@@ -659,18 +900,12 @@
                 const statusText = document.getElementById('status-text');
                 const gestureIcon = document.getElementById('gesture-icon');
                 const gestureText = document.getElementById('gesture-text');
-                const rotationValue = document.getElementById('rotation-value');
+                const shapeName = document.getElementById('shape-name');
 
                 const prevPosition = { ...this.handData.rawPosition };
 
                 if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                     const landmarks = results.multiHandLandmarks[0];
-
-                    // Track when hand first appears
-                    if (!this.handData.detected) {
-                        this.wasHandDetected = false;
-                        this.handDetectedTime = this.time;
-                    }
 
                     this.handData.detected = true;
                     statusDot.classList.add('active');
@@ -693,28 +928,18 @@
                         z: -centerZ * 5
                     };
 
-                    // Store initial position when hand first appears
+                    // Reset filters when hand first appears
                     if (!this.wasHandDetected) {
                         this.wasHandDetected = true;
-                        this.initialHandPosition = { ...this.handData.rawPosition };
-
-                        // Reset filters to current position
-                        this.positionFilters.x.reset(0);
-                        this.positionFilters.y.reset(0);
-                        this.positionFilters.z.reset(0);
-                        this.positionSmooth.x.reset(0);
-                        this.positionSmooth.y.reset(0);
-                        this.positionSmooth.z.reset(0);
+                        this.positionFilters.x.reset(this.handData.rawPosition.x);
+                        this.positionFilters.y.reset(this.handData.rawPosition.y);
+                        this.positionFilters.z.reset(this.handData.rawPosition.z);
+                        this.positionSmooth.x.reset(this.handData.rawPosition.x);
+                        this.positionSmooth.y.reset(this.handData.rawPosition.y);
+                        this.positionSmooth.z.reset(this.handData.rawPosition.z);
                     }
 
-                    // Calculate RELATIVE movement from initial position
-                    const relativePosition = {
-                        x: this.handData.rawPosition.x - this.initialHandPosition.x,
-                        y: this.handData.rawPosition.y - this.initialHandPosition.y,
-                        z: this.handData.rawPosition.z - this.initialHandPosition.z
-                    };
-
-                    // Calculate velocity
+                    // Velocity
                     this.handData.velocity = {
                         x: this.handData.rawPosition.x - prevPosition.x,
                         y: this.handData.rawPosition.y - prevPosition.y,
@@ -724,90 +949,76 @@
                     // Calculate rotation
                     this.calculateRawRotation(landmarks);
 
-                    // Apply Kalman filter to RELATIVE position
-                    this.handData.stablePosition.x = this.positionFilters.x.update(relativePosition.x);
-                    this.handData.stablePosition.y = this.positionFilters.y.update(relativePosition.y);
-                    this.handData.stablePosition.z = this.positionFilters.z.update(relativePosition.z);
+                    // Apply filters
+                    this.handData.stablePosition.x = this.positionFilters.x.update(this.handData.rawPosition.x);
+                    this.handData.stablePosition.y = this.positionFilters.y.update(this.handData.rawPosition.y);
+                    this.handData.stablePosition.z = this.positionFilters.z.update(this.handData.rawPosition.z);
 
                     this.handData.stableRotation.x = this.rotationFilters.x.update(this.handData.rawRotation.x);
                     this.handData.stableRotation.y = this.rotationFilters.y.update(this.handData.rawRotation.y);
                     this.handData.stableRotation.z = this.rotationFilters.z.update(this.handData.rawRotation.z);
 
                     // Detect gesture
-                    this.detectGestureStable(landmarks);
+                    const gesture = this.detectGesture(landmarks);
+                    this.handData.gesture = gesture;
+                    this.targetGesture = gesture;
 
                     // Update UI
-                    if (this.handData.isFist) {
-                        statusDot.classList.add('fist');
-                        gestureIcon.textContent = '✊';
-                        gestureText.textContent = 'Yumruk - Halka Modu';
-                    } else {
-                        statusDot.classList.remove('fist');
-                        gestureIcon.textContent = '🖐️';
-                        gestureText.textContent = 'Açık El - Dağılma';
-                    }
-
-                    const rotDeg = Math.round(this.handData.stableRotation.z * 180 / Math.PI);
-                    rotationValue.textContent = `${rotDeg}°`;
+                    this.updateGestureUI(gesture, gestureIcon, gestureText, shapeName);
 
                 } else {
                     this.handData.detected = false;
                     this.wasHandDetected = false;
-                    statusDot.classList.remove('active', 'fist');
+                    this.targetGesture = GESTURES.NONE;
+                    statusDot.classList.remove('active');
                     statusText.textContent = 'El Bekleniyor...';
                     gestureIcon.textContent = '🖐️';
                     gestureText.textContent = 'Hareket yok';
-                    rotationValue.textContent = '0°';
+                    shapeName.textContent = 'Varsayılan';
                 }
             }
 
+            updateGestureUI(gesture, gestureIcon, gestureText, shapeName) {
+                const gestureInfo = {
+                    [GESTURES.OPEN_HAND]: { icon: '🖐️', text: 'Açık El', shape: '💫 Dağılma' },
+                    [GESTURES.FIST]: { icon: '✊', text: 'Yumruk', shape: '⭕ Halka' },
+                    [GESTURES.THUMBS_UP]: { icon: '👍', text: 'Başparmak', shape: '🌌 Galaksi' },
+                    [GESTURES.PEACE]: { icon: '✌️', text: 'Peace', shape: '🧬 DNA' },
+                    [GESTURES.POINTING]: { icon: '☝️', text: 'İşaret', shape: '🌀 Vortex' },
+                    [GESTURES.ROCK]: { icon: '🤘', text: 'Rock', shape: '⚫ Kara Delik' },
+                    [GESTURES.OK]: { icon: '👌', text: 'OK', shape: '⚛️ Atom' },
+                    [GESTURES.NONE]: { icon: '🖐️', text: 'Belirsiz', shape: 'Varsayılan' }
+                };
+
+                const info = gestureInfo[gesture] || gestureInfo[GESTURES.NONE];
+                gestureIcon.textContent = info.icon;
+                gestureText.textContent = info.text;
+                shapeName.textContent = info.shape;
+            }
+
             calculateRawRotation(landmarks) {
-                // ============================================
-                // ROBUST ROTATION CALCULATION
-                // Works well for both open hand and fist
-                // Uses MCP joints (knuckles) which are always visible
-                // ============================================
-
                 const wrist = landmarks[0];
-
-                // MCP joints (knuckles) - visible in both open hand and fist
                 const thumbCmc = landmarks[1];
                 const indexMcp = landmarks[5];
                 const middleMcp = landmarks[9];
                 const ringMcp = landmarks[13];
                 const pinkyMcp = landmarks[17];
 
-                // ============================================
-                // Z ROTATION (ROLL) - Most important for fist rotation
-                // Use multiple point pairs and average for stability
-                // ============================================
-
-                // Method 1: Index to Pinky line (most reliable)
+                // Z rotation (roll)
                 const dx1 = pinkyMcp.x - indexMcp.x;
                 const dy1 = pinkyMcp.y - indexMcp.y;
                 const roll1 = Math.atan2(dy1, dx1);
 
-                // Method 2: Middle to Ring (backup)
                 const dx2 = ringMcp.x - middleMcp.x;
                 const dy2 = ringMcp.y - middleMcp.y;
                 const roll2 = Math.atan2(dy2, dx2);
 
-                // Method 3: Thumb CMC to Pinky MCP (wide baseline)
                 const dx3 = pinkyMcp.x - thumbCmc.x;
                 const dy3 = pinkyMcp.y - thumbCmc.y;
                 const roll3 = Math.atan2(dy3, dx3);
 
-                // Method 4: Wrist orientation (using index and pinky MCP relative to wrist)
-                const wristToIndex = { x: indexMcp.x - wrist.x, y: indexMcp.y - wrist.y };
-                const wristToPinky = { x: pinkyMcp.x - wrist.x, y: pinkyMcp.y - wrist.y };
-                const crossProduct = wristToIndex.x * wristToPinky.y - wristToIndex.y * wristToPinky.x;
-                const dotProduct = wristToIndex.x * wristToPinky.x + wristToIndex.y * wristToPinky.y;
-                const roll4 = Math.atan2(wristToPinky.y - wristToIndex.y, wristToPinky.x - wristToIndex.x);
-
-                // Weighted average of roll angles (prioritize most reliable methods)
-                // Handle angle wrapping by converting to vectors and back
-                const rolls = [roll1, roll2, roll3, roll4];
-                const weights = [0.4, 0.2, 0.25, 0.15]; // Index-Pinky is most reliable
+                const rolls = [roll1, roll2, roll3];
+                const weights = [0.5, 0.25, 0.25];
 
                 let sinSum = 0, cosSum = 0;
                 for (let i = 0; i < rolls.length; i++) {
@@ -816,128 +1027,160 @@
                 }
                 const rollAngle = Math.atan2(sinSum, cosSum);
 
-                // ============================================
-                // X ROTATION (PITCH) - Palm up/down
-                // ============================================
-
-                // Use wrist to middle MCP for pitch
                 const handDirX = middleMcp.x - wrist.x;
                 const handDirY = middleMcp.y - wrist.y;
                 const handLength = Math.sqrt(handDirX * handDirX + handDirY * handDirY) + 0.001;
                 const pitchAngle = Math.atan2(handDirY, handLength);
 
-                // ============================================
-                // Y ROTATION (YAW) - Palm left/right twist
-                // ============================================
-
-                // Use Z depth difference between index and pinky
                 const depthDiff = pinkyMcp.z - indexMcp.z;
                 const handWidth = Math.sqrt(dx1 * dx1 + dy1 * dy1) + 0.001;
                 const yawAngle = Math.atan2(depthDiff, handWidth);
 
-                // ============================================
-                // APPLY EXTRA SMOOTHING FOR FIST MODE
-                // ============================================
-
-                // If in fist mode, apply stronger filtering
-                const isFist = this.handData.isFist;
-                const smoothFactor = isFist ? 0.6 : 1.0; // More smoothing for fist
-
-                // Blend with previous rotation for stability
                 const prevRot = this.handData.rawRotation;
-                const blend = isFist ? 0.3 : 0.5; // Slower response for fist = more stable
+                const blend = 0.3;
 
-                this.handData.rawRotation = {
-                    x: prevRot.x * (1 - blend) + (pitchAngle * 0.7 * smoothFactor) * blend,
-                    y: prevRot.y * (1 - blend) + (-yawAngle * 0.5 * smoothFactor) * blend,
-                    z: prevRot.z * (1 - blend) + (-rollAngle * smoothFactor) * blend
-                };
+                const newRotX = prevRot.x * (1 - blend) + (pitchAngle * 0.5) * blend;
+                const newRotY = prevRot.y * (1 - blend) + (-yawAngle * 0.3) * blend;
+                const newRotZ = prevRot.z * (1 - blend) + (-rollAngle * 0.7) * blend;
+
+                const lastRot = this.handData.lastStableRotation;
+                const deadZone = this.rotationDeadZone;
+
+                if (Math.abs(newRotX - lastRot.x) > deadZone ||
+                    Math.abs(newRotY - lastRot.y) > deadZone ||
+                    Math.abs(newRotZ - lastRot.z) > deadZone) {
+                    this.handData.rawRotation = { x: newRotX, y: newRotY, z: newRotZ };
+                    this.handData.lastStableRotation = { x: newRotX, y: newRotY, z: newRotZ };
+                }
             }
 
-            detectGestureStable(landmarks) {
-                const fingertips = [4, 8, 12, 16, 20];
-                const fingerPips = [3, 6, 10, 14, 18];
-                const fingerMcps = [2, 5, 9, 13, 17];
+            // ============================================
+            // GESTURE DETECTION
+            // ============================================
 
-                const wrist = landmarks[0];
-                const middleMcp = landmarks[9];
-                const palmCenter = {
-                    x: (wrist.x + middleMcp.x) / 2,
-                    y: (wrist.y + middleMcp.y) / 2,
-                    z: (wrist.z + middleMcp.z) / 2
-                };
+            detectGesture(landmarks) {
+                const dominated = this.getFingerStates(landmarks);
 
-                const palmSize = Math.sqrt(
-                    Math.pow(middleMcp.x - wrist.x, 2) +
-                    Math.pow(middleMcp.y - wrist.y, 2) +
-                    Math.pow(middleMcp.z - wrist.z, 2)
-                );
-
-                let curledFingers = 0;
-
-                for (let i = 0; i < 5; i++) {
-                    const tip = landmarks[fingertips[i]];
-                    const pip = landmarks[fingerPips[i]];
-                    const mcp = landmarks[fingerMcps[i]];
-
-                    const tipToPalm = Math.sqrt(
-                        Math.pow(tip.x - palmCenter.x, 2) +
-                        Math.pow(tip.y - palmCenter.y, 2) +
-                        Math.pow(tip.z - palmCenter.z, 2)
-                    );
-
-                    const tipToWrist = Math.sqrt(
-                        Math.pow(tip.x - wrist.x, 2) +
-                        Math.pow(tip.y - wrist.y, 2) +
-                        Math.pow(tip.z - wrist.z, 2)
-                    );
-
-                    const mcpToWrist = Math.sqrt(
-                        Math.pow(mcp.x - wrist.x, 2) +
-                        Math.pow(mcp.y - wrist.y, 2) +
-                        Math.pow(mcp.z - wrist.z, 2)
-                    );
-
-                    const tipToPip = Math.sqrt(
-                        Math.pow(tip.x - pip.x, 2) +
-                        Math.pow(tip.y - pip.y, 2) +
-                        Math.pow(tip.z - pip.z, 2)
-                    );
-
-                    const pipToMcp = Math.sqrt(
-                        Math.pow(pip.x - mcp.x, 2) +
-                        Math.pow(pip.y - mcp.y, 2) +
-                        Math.pow(pip.z - mcp.z, 2)
-                    );
-
-                    const tipCloseThreshold = palmSize * (i === 0 ? 0.85 : 0.65);
-                    const isTipClose = tipToPalm < tipCloseThreshold;
-                    const isCurled = tipToWrist < mcpToWrist * 1.2;
-                    const isBent = tipToPip < pipToMcp * 0.85;
-
-                    if (isTipClose || (isCurled && isBent)) {
-                        curledFingers++;
-                    }
-                }
-
-                this.handData.fingersCurled = curledFingers;
-
-                // Gesture history for stability
-                this.gestureHistory.push(curledFingers >= 4 ? 1 : 0);
+                // Add to history for stability
+                this.gestureHistory.push(dominated);
                 if (this.gestureHistory.length > this.gestureHistorySize) {
                     this.gestureHistory.shift();
                 }
 
-                const avgGesture = this.gestureHistory.reduce((a, b) => a + b, 0) / this.gestureHistory.length;
-
-                // Hysteresis
-                if (avgGesture > 0.7) {
-                    this.handData.isFist = true;
-                    this.handData.isOpenHand = false;
-                } else if (avgGesture < 0.3) {
-                    this.handData.isFist = false;
-                    this.handData.isOpenHand = true;
+                // Count most common gesture in history
+                const gestureCounts = {};
+                for (const g of this.gestureHistory) {
+                    gestureCounts[g] = (gestureCounts[g] || 0) + 1;
                 }
+
+                let mostCommon = GESTURES.NONE;
+                let maxCount = 0;
+                for (const [gesture, count] of Object.entries(gestureCounts)) {
+                    if (count > maxCount) {
+                        maxCount = count;
+                        mostCommon = gesture;
+                    }
+                }
+
+                // Only change if confident (more than 75% of history for accuracy)
+                if (maxCount >= this.gestureHistorySize * 0.75) {
+                    return mostCommon;
+                }
+
+                return this.handData.gesture; // Keep previous
+            }
+
+            getFingerStates(landmarks) {
+                // Finger tip and base indices
+                const tips = [4, 8, 12, 16, 20];
+                const pips = [3, 6, 10, 14, 18];
+                const mcps = [2, 5, 9, 13, 17];
+
+                const wrist = landmarks[0];
+                const thumbTip = landmarks[4];
+                const thumbIp = landmarks[3];
+                const thumbMcp = landmarks[2];
+                const indexTip = landmarks[8];
+                const indexPip = landmarks[6];
+                const indexMcp = landmarks[5];
+                const middleTip = landmarks[12];
+                const middlePip = landmarks[10];
+                const ringTip = landmarks[16];
+                const ringPip = landmarks[14];
+                const pinkyTip = landmarks[20];
+                const pinkyPip = landmarks[18];
+
+                // Calculate finger extensions with stricter thresholds
+                const thumbExtension = this.distance(thumbTip, wrist) / this.distance(thumbMcp, wrist);
+                const indexExtension = this.distance(indexTip, wrist) / this.distance(indexPip, wrist);
+                const middleExtension = this.distance(middleTip, wrist) / this.distance(middlePip, wrist);
+                const ringExtension = this.distance(ringTip, wrist) / this.distance(ringPip, wrist);
+                const pinkyExtension = this.distance(pinkyTip, wrist) / this.distance(pinkyPip, wrist);
+
+                // Stricter thresholds for better accuracy
+                const extendedThreshold = 1.15;
+                const curledThreshold = 0.95;
+
+                const isThumbExtended = thumbExtension > 1.25;
+                const isIndexExtended = indexExtension > extendedThreshold;
+                const isMiddleExtended = middleExtension > extendedThreshold;
+                const isRingExtended = ringExtension > extendedThreshold;
+                const isPinkyExtended = pinkyExtension > extendedThreshold;
+
+                const isIndexCurled = indexExtension < curledThreshold;
+                const isMiddleCurled = middleExtension < curledThreshold;
+                const isRingCurled = ringExtension < curledThreshold;
+                const isPinkyCurled = pinkyExtension < curledThreshold;
+
+                // Thumb is up (thumb extended AND above wrist, others curled)
+                const isThumbUp = isThumbExtended &&
+                    isIndexCurled && isMiddleCurled && isRingCurled && isPinkyCurled &&
+                    thumbTip.y < wrist.y;
+
+                // Peace sign (index and middle extended, ring and pinky curled)
+                const isPeace = isIndexExtended && isMiddleExtended &&
+                    isRingCurled && isPinkyCurled && !isThumbExtended;
+
+                // Pointing (ONLY index extended, all others curled)
+                const isPointing = isIndexExtended &&
+                    isMiddleCurled && isRingCurled && isPinkyCurled && !isThumbExtended;
+
+                // Rock sign (index and pinky extended, middle and ring MUST be curled)
+                const isRock = isIndexExtended && isPinkyExtended &&
+                    isMiddleCurled && isRingCurled;
+
+                // OK sign (thumb and index tips very close, others extended)
+                const thumbIndexDist = this.distance(thumbTip, indexTip);
+                const palmSize = this.distance(wrist, landmarks[9]);
+                const isOK = thumbIndexDist < palmSize * 0.25 &&
+                    isMiddleExtended && isRingExtended && isPinkyExtended;
+
+                // Fist (all fingers curled)
+                const isFist = !isThumbExtended && !isIndexExtended && !isMiddleExtended &&
+                    !isRingExtended && !isPinkyExtended;
+
+                // Open hand (all fingers extended)
+                const isOpenHand = isIndexExtended && isMiddleExtended &&
+                    isRingExtended && isPinkyExtended;
+
+                // Determine gesture
+                if (isThumbUp) return GESTURES.THUMBS_UP;
+                if (isOK) return GESTURES.OK;
+                if (isRock) return GESTURES.ROCK;
+                if (isPeace) return GESTURES.PEACE;
+                if (isPointing && !isThumbExtended) return GESTURES.POINTING;
+                if (isFist) return GESTURES.FIST;
+                if (isOpenHand) return GESTURES.OPEN_HAND;
+
+                return GESTURES.NONE;
+            }
+
+            distance(p1, p2) {
+                return Math.sqrt(
+                    Math.pow(p1.x - p2.x, 2) +
+                    Math.pow(p1.y - p2.y, 2) +
+                    Math.pow(p1.z - p2.z, 2)
+                );
             }
 
             // ============================================
@@ -950,44 +1193,26 @@
                 const hand = this.handData;
 
                 const lerpFactor = 1 - Math.pow(0.001, this.deltaTime);
-                const colorLerpFactor = 1 - Math.pow(0.005, this.deltaTime);
 
-                // ============================================
-                // DETERMINE TARGET STATE
-                // ============================================
-
-                let targetDispersion = 0;
-                let targetColorMix = 0;
-
-                if (hand.detected) {
-                    if (hand.isFist) {
-                        // FIST: Form torus, warm colors
-                        targetDispersion = 0;
-                        targetColorMix = 1;
-                    } else {
-                        // OPEN HAND: Disperse, cool colors with intensity
-                        targetDispersion = 1;
-                        targetColorMix = 0;
+                // Smooth gesture transition
+                if (this.currentGesture !== this.targetGesture) {
+                    this.shapeTransition += this.deltaTime * 2;
+                    if (this.shapeTransition >= 1) {
+                        this.currentGesture = this.targetGesture;
+                        this.shapeTransition = 0;
                     }
-                } else {
-                    // NO HAND: Default torus, cool colors
-                    targetDispersion = 0;
-                    targetColorMix = 0;
                 }
 
-                // Smooth transition
-                this.dispersionAmount += (targetDispersion - this.dispersionAmount) * lerpFactor * 3;
-                this.currentColorMix += (targetColorMix - this.currentColorMix) * colorLerpFactor * 3;
+                // Get target positions for current and target gestures
+                const currentPositions = this.shapePositions[this.currentGesture] || this.shapePositions[GESTURES.NONE];
+                const targetPositions = this.shapePositions[this.targetGesture] || this.shapePositions[GESTURES.NONE];
 
-                // Update shader uniform
-                this.particles.material.uniforms.dispersion.value = this.dispersionAmount;
+                // Get colors
+                const currentColors = this.gestureColors[this.currentGesture] || this.gestureColors[GESTURES.NONE];
+                const targetColors = this.gestureColors[this.targetGesture] || this.gestureColors[GESTURES.NONE];
 
-                // ============================================
-                // UPDATE GROUP POSITION & ROTATION
-                // ============================================
-
+                // Update group position/rotation
                 if (hand.detected) {
-                    // Extra smoothing
                     hand.renderPosition.x = this.positionSmooth.x.update(hand.stablePosition.x);
                     hand.renderPosition.y = this.positionSmooth.y.update(hand.stablePosition.y);
                     hand.renderPosition.z = this.positionSmooth.z.update(hand.stablePosition.z);
@@ -996,98 +1221,136 @@
                     hand.renderRotation.y = this.rotationSmooth.y.update(hand.stableRotation.y);
                     hand.renderRotation.z = this.rotationSmooth.z.update(hand.stableRotation.z);
 
-                    // Apply to group - RELATIVE movement from initial position
                     this.particleGroup.position.x += (hand.renderPosition.x - this.particleGroup.position.x) * lerpFactor * 4;
                     this.particleGroup.position.y += (hand.renderPosition.y - this.particleGroup.position.y) * lerpFactor * 4;
                     this.particleGroup.position.z += (hand.renderPosition.z - this.particleGroup.position.z) * lerpFactor * 3;
 
-                    // Rotation
                     this.particleGroup.rotation.x += (hand.renderRotation.x - this.particleGroup.rotation.x) * lerpFactor * 3;
                     this.particleGroup.rotation.y += (hand.renderRotation.y - this.particleGroup.rotation.y) * lerpFactor * 3;
                     this.particleGroup.rotation.z += (hand.renderRotation.z - this.particleGroup.rotation.z) * lerpFactor * 3;
-
                 } else {
-                    // Return to center
                     this.particleGroup.position.x *= (1 - lerpFactor * 2);
                     this.particleGroup.position.y *= (1 - lerpFactor * 2);
                     this.particleGroup.position.z *= (1 - lerpFactor * 2);
 
-                    // Reset rotation smoothly
                     this.particleGroup.rotation.x *= (1 - lerpFactor * 1.5);
                     this.particleGroup.rotation.y *= (1 - lerpFactor * 1.5);
-                    this.particleGroup.rotation.z += 0.001; // Gentle idle spin
+                    this.particleGroup.rotation.z *= (1 - lerpFactor * 1.5);
                 }
 
+                // Update individual particles
+                const t = this.shapeTransition;
+
                 // ============================================
-                // UPDATE INDIVIDUAL PARTICLES
+                // SHAPE-SPECIFIC ROTATION ANIMATION
+                // Each shape has its own rotation characteristics
                 // ============================================
+                const gesture = this.currentGesture;
+                let shapeRotationSpeed = 0;
+                let shapeRotationAxis = 'y'; // Which axis to rotate around
+
+                if (gesture === GESTURES.THUMBS_UP) {
+                    // Galaxy - slow majestic spiral rotation
+                    shapeRotationSpeed = 0.15;
+                    shapeRotationAxis = 'y';
+                } else if (gesture === GESTURES.PEACE) {
+                    // DNA - medium rotation around vertical axis
+                    shapeRotationSpeed = 0.4;
+                    shapeRotationAxis = 'y';
+                } else if (gesture === GESTURES.POINTING) {
+                    // Vortex - VERY FAST rotation (tornado!)
+                    shapeRotationSpeed = 2.5;
+                    shapeRotationAxis = 'y';
+                } else if (gesture === GESTURES.ROCK) {
+                    // Black Hole - medium accretion disk rotation
+                    shapeRotationSpeed = 0.6;
+                    shapeRotationAxis = 'z';
+                } else if (gesture === GESTURES.OK) {
+                    // Atom - fast electron orbit
+                    shapeRotationSpeed = 0.8;
+                    shapeRotationAxis = 'multi'; // All axes
+                }
 
                 for (let i = 0; i < this.particleCount; i++) {
-                    const base = this.basePositions[i];
-                    const dispersed = this.dispersedPositions[i];
                     const current = this.currentLocalPositions[i];
                     const velocity = this.velocities[i];
 
-                    // Calculate target position based on dispersion
-                    const d = this.dispersionAmount;
+                    // Interpolate between shapes
+                    const currentPos = currentPositions[i];
+                    const targetPos = targetPositions[i];
 
-                    // Breathing for both states
-                    const breathe = Math.sin(this.time * 0.8 + i * 0.003) * 0.02;
+                    let targetX = currentPos.x * (1 - t) + targetPos.x * t;
+                    let targetY = currentPos.y * (1 - t) + targetPos.y * t;
+                    let targetZ = currentPos.z * (1 - t) + targetPos.z * t;
 
-                    // Target = lerp between torus and dispersed
-                    const targetX = base.x * (1 - d) * (1 + breathe) + dispersed.x * d;
-                    const targetY = base.y * (1 - d) * (1 + breathe) + dispersed.y * d;
-                    const targetZ = base.z * (1 - d) * (1 + breathe) + dispersed.z * d;
+                    // Apply shape-specific rotation to target positions
+                    if (shapeRotationSpeed > 0) {
+                        const angle = this.time * shapeRotationSpeed;
+                        const cosA = Math.cos(angle);
+                        const sinA = Math.sin(angle);
 
-                    // Add turbulence when dispersing
-                    let turbX = 0, turbY = 0, turbZ = 0;
-                    if (d > 0.1 && hand.detected) {
-                        const turbStrength = d * 0.05;
-                        turbX = Math.sin(this.time * 3 + i * 0.1) * turbStrength;
-                        turbY = Math.cos(this.time * 2.5 + i * 0.15) * turbStrength;
-                        turbZ = Math.sin(this.time * 2 + i * 0.2) * turbStrength * 0.5;
+                        if (shapeRotationAxis === 'y') {
+                            // Rotate around Y axis
+                            const newX = targetX * cosA - targetZ * sinA;
+                            const newZ = targetX * sinA + targetZ * cosA;
+                            targetX = newX;
+                            targetZ = newZ;
+                        } else if (shapeRotationAxis === 'z') {
+                            // Rotate around Z axis
+                            const newX = targetX * cosA - targetY * sinA;
+                            const newY = targetX * sinA + targetY * cosA;
+                            targetX = newX;
+                            targetY = newY;
+                        } else if (shapeRotationAxis === 'multi') {
+                            // Multi-axis rotation for atom
+                            const orbitIndex = i % 3;
+                            const orbitAngle = angle + orbitIndex * Math.PI * 2 / 3;
+                            const cosO = Math.cos(orbitAngle);
+                            const sinO = Math.sin(orbitAngle);
 
-                        // Add hand velocity influence when dispersed
-                        turbX += hand.velocity.x * d * 0.3;
-                        turbY += hand.velocity.y * d * 0.3;
+                            if (orbitIndex === 0) {
+                                const newX = targetX * cosO - targetZ * sinO;
+                                const newZ = targetX * sinO + targetZ * cosO;
+                                targetX = newX;
+                                targetZ = newZ;
+                            } else if (orbitIndex === 1) {
+                                const newY = targetY * cosO - targetZ * sinO;
+                                const newZ = targetY * sinO + targetZ * cosO;
+                                targetY = newY;
+                                targetZ = newZ;
+                            } else {
+                                const newX = targetX * cosO - targetY * sinO;
+                                const newY = targetX * sinO + targetY * cosO;
+                                targetX = newX;
+                                targetY = newY;
+                            }
+                        }
                     }
 
                     // Spring physics
-                    const springStrength = hand.isFist ? 0.15 : 0.08;
-                    velocity.x += (targetX + turbX - current.x) * springStrength;
-                    velocity.y += (targetY + turbY - current.y) * springStrength;
-                    velocity.z += (targetZ + turbZ - current.z) * springStrength;
+                    velocity.x += (targetX - current.x) * 0.1;
+                    velocity.y += (targetY - current.y) * 0.1;
+                    velocity.z += (targetZ - current.z) * 0.1;
 
-                    // Damping
-                    const damping = 0.85;
-                    velocity.x *= damping;
-                    velocity.y *= damping;
-                    velocity.z *= damping;
+                    velocity.x *= 0.85;
+                    velocity.y *= 0.85;
+                    velocity.z *= 0.85;
 
-                    // Update position
                     current.x += velocity.x;
                     current.y += velocity.y;
                     current.z += velocity.z;
 
-                    // Write to buffer
                     positions[i * 3] = current.x;
                     positions[i * 3 + 1] = current.y;
                     positions[i * 3 + 2] = current.z;
 
-                    // ============================================
-                    // COLOR BLENDING
-                    // ============================================
-                    const coolColor = this.coolColors[i % this.coolColors.length];
-                    const warmColor = this.warmColors[i % this.warmColors.length];
+                    // Interpolate colors
+                    const currentColor = currentColors[i % currentColors.length];
+                    const targetColor = targetColors[i % targetColors.length];
 
-                    const mix = this.currentColorMix;
-
-                    // Add brightness boost when dispersing
-                    const disperseBrightness = 1 + this.dispersionAmount * 0.3;
-
-                    colors[i * 3] = (coolColor.r * (1 - mix) + warmColor.r * mix) * disperseBrightness;
-                    colors[i * 3 + 1] = (coolColor.g * (1 - mix) + warmColor.g * mix) * disperseBrightness;
-                    colors[i * 3 + 2] = (coolColor.b * (1 - mix) + warmColor.b * mix) * disperseBrightness;
+                    colors[i * 3] = currentColor.r * (1 - t) + targetColor.r * t;
+                    colors[i * 3 + 1] = currentColor.g * (1 - t) + targetColor.g * t;
+                    colors[i * 3 + 2] = currentColor.b * (1 - t) + targetColor.b * t;
                 }
 
                 this.particles.geometry.attributes.position.needsUpdate = true;
