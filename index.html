@@ -255,9 +255,9 @@
     <!-- Three.js -->
     <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 
-    <!-- MediaPipe -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+    <!-- MediaPipe - using unpkg (different CDN) -->
+    <script src="https://unpkg.com/@mediapipe/hands@0.4.1646424915/hands.js"></script>
+    <script src="https://unpkg.com/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js"></script>
 
     <script>
         // ============================================
@@ -996,7 +996,7 @@
                             const hands = new Hands({
                                 locateFile: (file) => {
                                     console.log('Loading file:', file);
-                                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`;
+                                    return `https://unpkg.com/@mediapipe/hands@0.4.1646424915/${file}`;
                                 }
                             });
                             resolve(hands);
